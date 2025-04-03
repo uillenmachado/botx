@@ -13,6 +13,7 @@ Repositório: github.com/uillenmachado/botx
 
 import os
 from dotenv import load_dotenv
+import re
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -30,7 +31,7 @@ NUM_TRENDS = 5    # Número de tendências para buscar e exibir
 
 # Limites da API
 DAILY_POST_LIMIT = 16        # Máximo de posts por dia
-MONTHLY_POST_LIMIT = 500     # Limite mensal da API (nível do app)
+MONTHLY_POST_LIMIT = 496     # Limite mensal para maximizar o uso da API (500 é o limite real)
 API_USER_LEVEL_LIMIT = 1500  # Limite mensal da API (nível do usuário)
 
 # Configurações de Horários
@@ -39,12 +40,14 @@ END_HOUR = "23:00"          # Horário de fim dos posts
 POST_INTERVAL_MINUTES = 60  # Intervalo entre posts (60 minutos)
 TREND_UPDATE_HOUR = "07:00" # Horário para atualização diária das tendências
 
+# Padrão para validação de horários (formato HH:MM, entre 00:00 e 23:59)
+TIME_PATTERN = re.compile(r'^([01]\d|2[0-3]):([0-5]\d)$')
+
 # Arquivos e Diretórios
 POSTS_FILE = "posts.json"  # Arquivo para gerenciar postagens
 LOG_FILE = "bot_log.txt"   # Arquivo de log
 
 # Configurações de Timeout e Retry
-MENU_TIMEOUT = 60          # Timeout do menu principal em segundos
 APPROVE_TIMEOUT = 30       # Timeout para aprovação de posts em segundos
 MAX_RETRIES = 3            # Número máximo de tentativas para operações da API
 INITIAL_BACKOFF = 5        # Tempo inicial de espera entre tentativas (segundos)

@@ -1,1 +1,27 @@
+# Arquivo de ambiente com chaves da API
 .env 
+
+# Arquivos de dados gerados pelo bot
+posts.json
+*.backup.*
+bot_log.txt
+
+# Arquivos de cache do Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ambientes virtuais
+venv/
+env/
+ENV/
+
+# Arquivos específicos do sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos do IDE/Editor
+.idea/
+.vscode/
+*.swp
+*.swo

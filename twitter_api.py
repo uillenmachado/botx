@@ -22,9 +22,9 @@ from config import (
     BEARER_TOKEN, WOEID_GLOBAL, NUM_TRENDS, MAX_RETRIES, INITIAL_BACKOFF
 )
 
-# Variável global para armazenar o cliente da API
-client = None
-api_v1 = None
+# Variáveis globais para armazenar clientes da API
+client = None  # Cliente da API v2
+api_v1 = None  # Cliente da API v1.1
 
 # Função para retry com backoff
 def retry_with_backoff(max_retries=MAX_RETRIES, initial_backoff=INITIAL_BACKOFF):
@@ -87,6 +87,9 @@ def initialize_api():
         # Teste de conexão
         # Verifica se consegue obter as informações do usuário
         user_info = client.get_me()
+        if not user_info or not hasattr(user_info, "data"):
+            return False, "Erro ao obter informações do usuário. Verifique suas credenciais."
+            
         username = user_info.data.username
         
         logging.info(f"Conexão com a API do X estabelecida com sucesso. Usuário: @{username}")
@@ -108,8 +111,12 @@ def get_trends():
         tuple: (list, datetime) - Lista com as tendências globais e timestamp da consulta.
               Em caso de erro, retorna uma lista com mensagem de erro.
     """
+    global api_v1
+    
     if api_v1 is None:
-        initialize_api()
+        success, message = initialize_api()
+        if not success:
+            return [{"name": message, "volume": "N/A"}], datetime.now()
         
     try:
         trends = api_v1.get_place_trends(id=WOEID_GLOBAL)
@@ -126,15 +133,25 @@ def get_trends():
                     "volume": volume
                 })
             
-            logging.info(f"Tendências atualizadas: {', '.join([t['name'] for t in trend_list])}")
+            trend_names = [t["name"] for t in trend_list]
+            logging.info(f"Tendências atualizadas: {', '.join(trend_names)}")
             return trend_list, timestamp
         else:
             logging.error("Nenhuma tendência encontrada.")
             return [{"name": "Nenhuma tendência disponível", "volume": "N/A"}], timestamp
             
     except tweepy.TweepyException as e:
-        logging.error(f"Erro ao buscar tendências: {e}")
-        return [{"name": f"Erro ao buscar tendências: {e}", "volume": "N/A"}], datetime.now()
+        error_msg = str(e)
+        logging.error(f"Erro ao buscar tendências: {error_msg}")
+        
+        # Trata diferentes tipos de erros da API
+        if "rate limit" in error_msg.lower():
+            return [{"name": "Limite de taxa excedido ao buscar tendências", "volume": "N/A"}], datetime.now()
+        elif "authentication" in error_msg.lower() or "unauthorized" in error_msg.lower():
+            return [{"name": "Erro de autenticação ao buscar tendências", "volume": "N/A"}], datetime.now()
+        else:
+            return [{"name": f"Erro ao buscar tendências: {error_msg}", "volume": "N/A"}], datetime.now()
+            
     except Exception as e:
         logging.error(f"Erro inesperado ao buscar tendências: {e}")
         return [{"name": "Erro inesperado ao buscar tendências", "volume": "N/A"}], datetime.now()
@@ -150,8 +167,12 @@ def post_tweet(text):
     Returns:
         tuple: (bool, str, dict) - Sucesso (True/False), mensagem explicativa e dados do tweet.
     """
+    global client
+    
     if client is None:
-        initialize_api()
+        success, message = initialize_api()
+        if not success:
+            return False, message, None
         
     try:
         # Verifica se o texto está dentro do limite
@@ -161,6 +182,10 @@ def post_tweet(text):
         # Publica o tweet
         response = client.create_tweet(text=text)
         
+        # Verifica se a resposta é válida
+        if not response or not hasattr(response, "data"):
+            return False, "Resposta da API inválida ao tentar publicar tweet.", None
+            
         # Extrai o ID do tweet
         tweet_id = response.data['id']
         
@@ -182,6 +207,8 @@ def post_tweet(text):
             return False, "Erro de autorização. Verifique suas credenciais da API.", None
         elif "rate limit" in error_msg.lower():
             return False, "Limite de taxa excedido. Aguarde alguns minutos e tente novamente.", None
+        elif "text is too long" in error_msg.lower():
+            return False, f"O texto excede o limite de caracteres permitido pelo X.", None
         else:
             return False, f"Erro ao publicar tweet: {error_msg}", None
             
@@ -196,8 +223,12 @@ def get_user_info():
     Returns:
         tuple: (bool, dict) - Sucesso (True/False) e dicionário com informações do usuário.
     """
+    global client
+    
     if client is None:
-        initialize_api()
+        success, message = initialize_api()
+        if not success:
+            return False, {"error": message}
         
     try:
         user_info = client.get_me(user_fields=["name", "username", "description", "public_metrics"])

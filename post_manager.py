@@ -12,9 +12,13 @@ Repositório: github.com/uillenmachado/botx
 import json
 import os
 import logging
+import re
 from datetime import datetime
 import time
-from config import POSTS_FILE, START_HOUR, END_HOUR, MAX_TWEET_LENGTH, DATE_FORMAT
+from config import (
+    POSTS_FILE, START_HOUR, END_HOUR, MAX_TWEET_LENGTH, 
+    DATE_FORMAT, TIME_PATTERN
+)
 
 # Estrutura básica do arquivo de posts
 DEFAULT_POSTS_DATA = {
@@ -100,23 +104,50 @@ def save_posts(posts_data):
 def validate_time(time_str):
     """
     Valida se o horário está no formato correto e dentro do intervalo permitido.
+    Usa expressão regular para validar o formato HH:MM.
     
     Args:
-        time_str (str): Horário no formato HH:MM.
+        time_str (str): Horário no formato HH:MM ou "now".
         
     Returns:
         bool: True se o horário é válido, False caso contrário.
     """
     try:
+        # Caso especial para postagem imediata
         if time_str == "now":
             return True
+        
+        # Verifica o formato usando expressão regular (HH:MM)
+        if not TIME_PATTERN.match(time_str):
+            return False
             
+        # Verifica se está dentro do intervalo permitido
         horario_dt = datetime.strptime(time_str, "%H:%M")
         start_dt = datetime.strptime(START_HOUR, "%H:%M")
         end_dt = datetime.strptime(END_HOUR, "%H:%M")
+        
         return start_dt.time() <= horario_dt.time() <= end_dt.time()
     except ValueError:
         return False
+
+def sanitize_text(text):
+    """
+    Sanitiza o texto da postagem para evitar problemas com caracteres especiais.
+    
+    Args:
+        text (str): Texto original da postagem.
+        
+    Returns:
+        str: Texto sanitizado.
+    """
+    # Remove caracteres de controle e normaliza espaços em branco
+    sanitized = ' '.join(text.strip().split())
+    
+    # Limita ao tamanho máximo permitido
+    if len(sanitized) > MAX_TWEET_LENGTH:
+        sanitized = sanitized[:MAX_TWEET_LENGTH]
+        
+    return sanitized
 
 def create_post(text, time="now", posts_data=None):
     """
@@ -132,7 +163,9 @@ def create_post(text, time="now", posts_data=None):
     Returns:
         tuple: (bool, str) - Sucesso (True/False) e mensagem explicativa.
     """
-    # Validação do texto
+    # Sanitização e validação do texto
+    text = sanitize_text(text)
+    
     if not text:
         return False, "O texto da postagem não pode estar vazio."
     
@@ -141,7 +174,7 @@ def create_post(text, time="now", posts_data=None):
     
     # Validação do horário
     if not validate_time(time):
-        return False, "Formato de horário inválido ou fora do intervalo permitido (08:00-23:00)."
+        return False, f"Formato de horário inválido ou fora do intervalo permitido ({START_HOUR}-{END_HOUR})."
     
     # Carrega os posts se não foram fornecidos
     if posts_data is None:
@@ -160,9 +193,96 @@ def create_post(text, time="now", posts_data=None):
     
     # Salva as alterações
     if save_posts(posts_data):
-        return True, f"Postagem criada e adicionada à lista de pendentes: '{text[:30]}...' às {time}"
+        return True, f"Postagem criada e adicionada à lista de pendentes: '{text[:30]}{'...' if len(text) > 30 else ''}' às {time}"
     else:
         return False, "Erro ao salvar a postagem. Verifique o log para mais detalhes."
+
+def edit_post(post_index, new_text=None, new_time=None, status="pending", posts_data=None):
+    """
+    Edita uma postagem existente.
+    
+    Args:
+        post_index (int): Índice da postagem na lista.
+        new_text (str, optional): Novo texto para a postagem.
+        new_time (str, optional): Novo horário para a postagem.
+        status (str, optional): Status da postagem a ser editada 
+                               ("pending", "approved", "scheduled").
+        posts_data (dict, optional): Dicionário com as listas de posts.
+    
+    Returns:
+        tuple: (bool, str) - Sucesso (True/False) e mensagem explicativa.
+    """
+    # Carrega os posts se não foram fornecidos
+    if posts_data is None:
+        posts_data = load_posts()
+    
+    # Verifica se o status é válido
+    if status not in ["pending", "approved", "scheduled"]:
+        return False, "Status inválido."
+    
+    # Verifica se o índice é válido
+    if post_index < 0 or post_index >= len(posts_data[status]):
+        return False, f"Índice {post_index} de postagem inválido para status '{status}'."
+    
+    # Obtém o post
+    post = posts_data[status][post_index]
+    
+    # Atualiza o texto se fornecido
+    if new_text is not None:
+        new_text = sanitize_text(new_text)
+        if not new_text:
+            return False, "O texto da postagem não pode estar vazio."
+        if len(new_text) > MAX_TWEET_LENGTH:
+            return False, f"O texto excede o limite de {MAX_TWEET_LENGTH} caracteres."
+        post["text"] = new_text
+        post["edited_at"] = datetime.now().isoformat()
+    
+    # Atualiza o horário se fornecido
+    if new_time is not None:
+        if not validate_time(new_time):
+            return False, f"Formato de horário inválido ou fora do intervalo permitido ({START_HOUR}-{END_HOUR})."
+        post["time"] = new_time
+        post["edited_at"] = datetime.now().isoformat()
+    
+    # Salva as alterações
+    if save_posts(posts_data):
+        return True, f"Postagem {post_index+1} editada com sucesso."
+    else:
+        return False, "Erro ao salvar as alterações. Verifique o log para mais detalhes."
+
+def delete_post(post_index, status="pending", posts_data=None):
+    """
+    Exclui uma postagem.
+    
+    Args:
+        post_index (int): Índice da postagem na lista.
+        status (str, optional): Status da postagem a ser excluída 
+                               ("pending", "approved", "scheduled").
+        posts_data (dict, optional): Dicionário com as listas de posts.
+    
+    Returns:
+        tuple: (bool, str) - Sucesso (True/False) e mensagem explicativa.
+    """
+    # Carrega os posts se não foram fornecidos
+    if posts_data is None:
+        posts_data = load_posts()
+    
+    # Verifica se o status é válido
+    if status not in ["pending", "approved", "scheduled"]:
+        return False, "Status inválido."
+    
+    # Verifica se o índice é válido
+    if post_index < 0 or post_index >= len(posts_data[status]):
+        return False, f"Índice {post_index} de postagem inválido para status '{status}'."
+    
+    # Remove o post
+    removed_post = posts_data[status].pop(post_index)
+    
+    # Salva as alterações
+    if save_posts(posts_data):
+        return True, f"Postagem removida com sucesso: '{removed_post['text'][:30]}{'...' if len(removed_post['text']) > 30 else ''}'."
+    else:
+        return False, "Erro ao salvar as alterações após exclusão. Verifique o log para mais detalhes."
 
 def approve_post(post_index, approve=True, new_time=None, posts_data=None):
     """
@@ -198,7 +318,7 @@ def approve_post(post_index, approve=True, new_time=None, posts_data=None):
     # Se aprovado, atualiza o horário se fornecido
     if new_time is not None:
         if not validate_time(new_time):
-            return False, "Formato de horário inválido ou fora do intervalo permitido (08:00-23:00).", None
+            return False, f"Formato de horário inválido ou fora do intervalo permitido ({START_HOUR}-{END_HOUR}).", None
         post["time"] = new_time
     
     # Atualiza status e timestamp
@@ -212,7 +332,7 @@ def approve_post(post_index, approve=True, new_time=None, posts_data=None):
     # Salva as alterações
     save_posts(posts_data)
     
-    return True, f"Postagem aprovada: '{post['text'][:30]}...' para {post['time']}", post
+    return True, f"Postagem aprovada: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}' para {post['time']}", post
 
 def schedule_post(post_index, scheduled=True, posts_data=None):
     """
@@ -250,7 +370,7 @@ def schedule_post(post_index, scheduled=True, posts_data=None):
     if scheduled:
         posts_data["scheduled"].append(post)
         posts_data["approved"].pop(post_index)
-        message = f"Postagem agendada: '{post['text'][:30]}...' para {post['time']}"
+        message = f"Postagem agendada: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}' para {post['time']}"
     else:
         posts_data["approved"].append(post)
         # Encontra e remove da lista de agendados
@@ -258,7 +378,7 @@ def schedule_post(post_index, scheduled=True, posts_data=None):
             if p["text"] == post["text"] and p["time"] == post["time"]:
                 posts_data["scheduled"].pop(i)
                 break
-        message = f"Agendamento removido: '{post['text'][:30]}...'"
+        message = f"Agendamento removido: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}'"
     
     # Salva as alterações
     save_posts(posts_data)
@@ -295,6 +415,24 @@ def mark_as_posted(post, posts_data=None):
     # Salva as alterações
     return save_posts(posts_data)
 
+def get_scheduled_posts_for_recovery(posts_data=None):
+    """
+    Retorna a lista de posts agendados para recuperação de agendamentos.
+    Útil para recriar agendamentos após reiniciar o bot.
+    
+    Args:
+        posts_data (dict, optional): Dicionário com as listas de posts.
+                                    Se None, carrega do arquivo.
+    
+    Returns:
+        list: Lista de posts agendados.
+    """
+    # Carrega os posts se não foram fornecidos
+    if posts_data is None:
+        posts_data = load_posts()
+        
+    return posts_data["scheduled"]
+
 def get_post_list(status="all", posts_data=None):
     """
     Retorna uma lista formatada de postagens de acordo com o status.
@@ -317,22 +455,22 @@ def get_post_list(status="all", posts_data=None):
     if status == "all" or status == "pending":
         for i, post in enumerate(posts_data["pending"]):
             created_at = datetime.fromisoformat(post["created_at"]).strftime(DATE_FORMAT) if "created_at" in post else "N/A"
-            result.append(f"Pendente {i+1}: '{post['text'][:50]}...' | Horário: {post['time']} | Criado em: {created_at}")
+            result.append(f"Pendente #{i+1}: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Criado em: {created_at}")
     
     if status == "all" or status == "approved":
         for i, post in enumerate(posts_data["approved"]):
             approved_at = datetime.fromisoformat(post["approved_at"]).strftime(DATE_FORMAT) if "approved_at" in post else "N/A"
-            result.append(f"Aprovado {i+1}: '{post['text'][:50]}...' | Horário: {post['time']} | Aprovado em: {approved_at}")
+            result.append(f"Aprovado #{i+1}: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Aprovado em: {approved_at}")
     
     if status == "all" or status == "scheduled":
         for i, post in enumerate(posts_data["scheduled"]):
             scheduled_at = datetime.fromisoformat(post["scheduled_at"]).strftime(DATE_FORMAT) if "scheduled_at" in post else "N/A"
-            result.append(f"Agendado {i+1}: '{post['text'][:50]}...' | Horário: {post['time']} | Agendado em: {scheduled_at}")
+            result.append(f"Agendado #{i+1}: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Agendado em: {scheduled_at}")
     
     if status == "all" or status == "history":
         for i, post in enumerate(posts_data["history"]):
             posted_at = datetime.fromisoformat(post["posted_at"]).strftime(DATE_FORMAT) if "posted_at" in post else "N/A"
-            result.append(f"Publicado {i+1}: '{post['text'][:50]}...' | Horário: {post['time']} | Publicado em: {posted_at}")
+            result.append(f"Publicado #{i+1}: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Publicado em: {posted_at}")
     
     return result
 
