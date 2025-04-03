@@ -39,27 +39,51 @@ def load_posts():
     """
     try:
         if os.path.exists(POSTS_FILE):
+            # Verificação adicional do tamanho do arquivo para prevenir falhas
+            if os.path.getsize(POSTS_FILE) == 0:
+                logging.error(f"Arquivo {POSTS_FILE} está vazio. Criando nova estrutura.")
+                return DEFAULT_POSTS_DATA.copy()
+                
             with open(POSTS_FILE, "r", encoding="utf-8") as f:
                 try:
-                    posts_data = json.load(f)
+                    file_content = f.read()
+                    if not file_content.strip():
+                        logging.error(f"Arquivo {POSTS_FILE} está vazio. Criando nova estrutura.")
+                        return DEFAULT_POSTS_DATA.copy()
+                    
+                    posts_data = json.loads(file_content)
                     
                     # Verifica se o arquivo tem a estrutura correta
-                    required_keys = ["pending", "approved", "scheduled"]
-                    if not all(key in posts_data for key in required_keys):
-                        logging.warning("Estrutura incorreta no arquivo posts.json. Adicionando chaves ausentes.")
-                        for key in required_keys:
-                            if key not in posts_data:
-                                posts_data[key] = []
+                    required_keys = ["pending", "approved", "scheduled", "history"]
+                    missing_keys = [key for key in required_keys if key not in posts_data]
                     
-                    # Adiciona a chave history se não existir
-                    if "history" not in posts_data:
-                        posts_data["history"] = []
+                    if missing_keys:
+                        logging.warning(f"Estrutura incorreta no arquivo posts.json. Chaves ausentes: {missing_keys}")
+                        for key in missing_keys:
+                            posts_data[key] = []
+                    
+                    # Verifica se as chaves são listas
+                    for key in required_keys:
+                        if not isinstance(posts_data.get(key, []), list):
+                            logging.warning(f"A chave '{key}' em posts.json não é uma lista. Corrigindo...")
+                            posts_data[key] = []
                     
                     # Retorna os dados carregados
                     return posts_data
                     
                 except (json.JSONDecodeError, ValueError) as e:
-                    logging.error(f"Erro ao ler {POSTS_FILE}: {e}. Criando novo arquivo.")
+                    logging.error(f"Erro ao decodificar {POSTS_FILE}: {e}. Criando backup e novo arquivo.")
+                    
+                    # Tenta criar um backup do arquivo corrompido
+                    try:
+                        backup_file = f"{POSTS_FILE}.corrupted.{int(time.time())}"
+                        with open(POSTS_FILE, "r", encoding="utf-8") as source:
+                            with open(backup_file, "w", encoding="utf-8") as target:
+                                target.write(source.read())
+                        logging.info(f"Backup do arquivo corrompido criado em {backup_file}")
+                    except Exception as backup_err:
+                        logging.error(f"Erro ao criar backup do arquivo corrompido: {backup_err}")
+                    
                     return DEFAULT_POSTS_DATA.copy()
         else:
             # Arquivo não existe, cria um novo com a estrutura padrão
@@ -84,6 +108,18 @@ def save_posts(posts_data):
         bool: True se o arquivo foi salvo com sucesso, False caso contrário.
     """
     try:
+        # Verificação adicional da estrutura antes de salvar
+        if not isinstance(posts_data, dict):
+            logging.error(f"Erro ao salvar posts: a estrutura não é um dicionário")
+            return False
+            
+        required_keys = ["pending", "approved", "scheduled", "history"]
+        for key in required_keys:
+            if key not in posts_data:
+                posts_data[key] = []
+            elif not isinstance(posts_data[key], list):
+                posts_data[key] = []
+        
         with open(POSTS_FILE, "w", encoding="utf-8") as f:
             json.dump(posts_data, f, indent=4, ensure_ascii=False)
         return True
@@ -131,13 +167,27 @@ def validate_time(time_str):
         # Verifica o formato usando expressão regular (HH:MM)
         if not TIME_PATTERN.match(time_str):
             return False
-            
-        # Verifica se está dentro do intervalo permitido
-        horario_dt = datetime.strptime(time_str, "%H:%M")
-        start_dt = datetime.strptime(START_HOUR, "%H:%M")
-        end_dt = datetime.strptime(END_HOUR, "%H:%M")
         
-        return start_dt.time() <= horario_dt.time() <= end_dt.time()
+        # Extrai as horas e minutos
+        hours, minutes = map(int, time_str.split(':'))
+        
+        # Verifica se está dentro do intervalo permitido
+        start_hours, start_minutes = map(int, START_HOUR.split(':'))
+        end_hours, end_minutes = map(int, END_HOUR.split(':'))
+        
+        start_total_minutes = start_hours * 60 + start_minutes
+        end_total_minutes = end_hours * 60 + end_minutes
+        time_total_minutes = hours * 60 + minutes
+        
+        # Caso especial: se END_HOUR < START_HOUR (ex: 23:00 a 08:00)
+        if end_total_minutes < start_total_minutes:
+            # Válido se estiver entre START_HOUR e meia-noite OU entre meia-noite e END_HOUR
+            return (time_total_minutes >= start_total_minutes or 
+                   time_total_minutes <= end_total_minutes)
+        else:
+            # Caso normal: START_HOUR <= time <= END_HOUR
+            return start_total_minutes <= time_total_minutes <= end_total_minutes
+            
     except ValueError:
         return False
 
