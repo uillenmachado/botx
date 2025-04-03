@@ -25,7 +25,7 @@ from config import (
 from post_manager import (
     load_posts, save_posts, get_post_list, create_post, edit_post, delete_post,
     approve_post, schedule_post, mark_as_posted, get_scheduled_posts_for_recovery,
-    get_stats, validate_time
+    get_stats, validate_time, get_post_by_id, get_pending_now_posts
 )
 from twitter_api import (
     initialize_api, get_trends, post_tweet, get_user_info
@@ -256,6 +256,10 @@ def schedule_post_at_time(post):
         post_id = post.get("id")
         if post_id:
             with job_lock:
+                # Remove qualquer job existente com o mesmo ID
+                if post_id in scheduled_jobs:
+                    schedule.cancel_job(scheduled_jobs[post_id])
+                    
                 scheduled_jobs[post_id] = job
                 logging.info(f"Post agendado para {post['time']}: '{post['text'][:50]}...' [ID: {post_id[:8]}]")
             return True
@@ -674,8 +678,8 @@ def process_pending_now_posts():
         logging.warning("Não é possível processar posts 'now' devido aos limites da API")
         return
     
-    posts_data = load_posts()
-    now_posts = [p for p in posts_data["approved"] if p.get("time", "").lower() == "now"]
+    # Obtém a lista de posts com horário "now"
+    now_posts = get_pending_now_posts()
     
     if not now_posts:
         return
@@ -683,6 +687,11 @@ def process_pending_now_posts():
     logging.info(f"Processando {len(now_posts)} posts com horário 'now'")
     
     for post in now_posts:
+        # Verifica novamente os limites para cada post
+        if not can_post_today() or not can_post_this_month():
+            logging.warning("Limite de posts atingido durante o processamento de posts 'now'")
+            break
+            
         post_id = post.get("id", "N/A")[:8]
         logging.info(f"Publicando post imediato [ID:{post_id}]: '{post['text'][:50]}...'")
         
@@ -712,6 +721,37 @@ def process_pending_now_posts():
                 logging.warning(f"Post sem ID encontrado: {post['text'][:30]}...")
         else:
             logging.error(f"Falha ao publicar post 'now' [ID:{post_id}]: {message}")
+
+def check_missed_schedules():
+    """
+    Verifica se há posts agendados que deveriam ter sido publicados enquanto o bot estava offline.
+    Executado na inicialização do bot.
+    """
+    logging.info("Verificando posts agendados que podem ter sido perdidos...")
+    posts_data = load_posts()
+    now = datetime.now()
+    current_time_str = now.strftime("%H:%M")
+    
+    for post in posts_data["scheduled"]:
+        post_time = post.get("time", "")
+        
+        # Pula posts sem horário válido
+        if not validate_time(post_time) or post_time.lower() == "now":
+            continue
+            
+        # Compara horários para ver se já deveria ter sido postado hoje
+        if post_time < current_time_str:
+            post_id = post.get("id", "N/A")[:8]
+            logging.info(f"Encontrado post agendado [ID:{post_id}] que deveria ter sido publicado às {post_time}")
+            
+            # Verifica se pode publicar agora
+            if can_post_today() and can_post_this_month():
+                logging.info(f"Tentando publicar post perdido [ID:{post_id}]")
+                post_scheduled_tweet(post)
+            else:
+                logging.warning(f"Não é possível publicar o post perdido [ID:{post_id}] devido aos limites da API")
+    
+    logging.info("Verificação de posts perdidos concluída")
 
 def show_statistics():
     """Exibe estatísticas sobre as postagens."""
@@ -855,6 +895,9 @@ def main():
     
     # Busca tendências iniciais
     update_trends()
+    
+    # Verifica posts que deveriam ter sido publicados durante o tempo offline
+    check_missed_schedules()
     
     # Recupera agendamentos existentes
     scheduled_posts = get_scheduled_posts_for_recovery()

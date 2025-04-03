@@ -443,11 +443,11 @@ def schedule_post(post_index, scheduled=True, posts_data=None):
     
     # Move para a lista apropriada
     if scheduled:
-        posts_data["scheduled"].append(post)
+        posts_data["scheduled"].append(post.copy())  # Usa .copy() para evitar problemas de referência
         posts_data["approved"].pop(post_index)
         message = f"Postagem agendada: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}' para {post['time']}"
     else:
-        posts_data["approved"].append(post)
+        posts_data["approved"].append(post.copy())  # Usa .copy() para evitar problemas de referência
         # Encontra e remove da lista de agendados usando o ID único
         for i, p in enumerate(posts_data["scheduled"]):
             if p.get("id", None) == post_id:
@@ -482,12 +482,16 @@ def mark_as_posted(post, posts_data=None):
     post["status"] = "posted"
     
     # Adiciona ao histórico
-    posts_data["history"].append(post)
+    posts_data["history"].append(post.copy())  # Usa .copy() para evitar problemas de referência
     
     # Remove da lista de agendados se estiver lá, usando o ID único
     post_id = post.get("id", None)
     if post_id:
         posts_data["scheduled"] = [p for p in posts_data["scheduled"] 
+                                if p.get("id", None) != post_id]
+        
+        # Também remove da lista de aprovados por segurança
+        posts_data["approved"] = [p for p in posts_data["approved"]
                                 if p.get("id", None) != post_id]
     
     # Salva as alterações
@@ -509,7 +513,41 @@ def get_scheduled_posts_for_recovery(posts_data=None):
     if posts_data is None:
         posts_data = load_posts()
         
-    return posts_data["scheduled"]
+    # Faz uma cópia profunda de cada post para evitar problemas de referência
+    return [post.copy() for post in posts_data["scheduled"]]
+
+def get_post_by_id(post_id, status=None, posts_data=None):
+    """
+    Encontra um post pelo ID em uma ou todas as listas.
+    
+    Args:
+        post_id (str): ID do post a ser encontrado.
+        status (str, optional): Status em que procurar ("pending", "approved", 
+                               "scheduled", "history") ou None para procurar em todos.
+        posts_data (dict, optional): Dicionário com as listas de posts.
+    
+    Returns:
+        tuple: (dict, str, int) - Post encontrado, status e índice, ou (None, None, -1) se não encontrado.
+    """
+    # Carrega os posts se não foram fornecidos
+    if posts_data is None:
+        posts_data = load_posts()
+    
+    # Se status for fornecido, procura apenas nesse status
+    if status:
+        if status in posts_data:
+            for i, post in enumerate(posts_data[status]):
+                if post.get("id") == post_id:
+                    return post, status, i
+        return None, None, -1
+    
+    # Se status não for fornecido, procura em todos
+    for status_key in ["pending", "approved", "scheduled", "history"]:
+        for i, post in enumerate(posts_data[status_key]):
+            if post.get("id") == post_id:
+                return post, status_key, i
+    
+    return None, None, -1
 
 def get_post_list(status="all", posts_data=None):
     """
@@ -555,6 +593,24 @@ def get_post_list(status="all", posts_data=None):
             result.append(f"Publicado #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Publicado em: {posted_at}")
     
     return result
+
+def get_pending_now_posts(posts_data=None):
+    """
+    Retorna uma lista de posts aprovados com horário "now" para publicação imediata.
+    
+    Args:
+        posts_data (dict, optional): Dicionário com as listas de posts.
+    
+    Returns:
+        list: Lista de posts aprovados com horário "now".
+    """
+    # Carrega os posts se não foram fornecidos
+    if posts_data is None:
+        posts_data = load_posts()
+    
+    # Retorna cópias dos posts para evitar problemas de referência
+    return [post.copy() for post in posts_data["approved"] 
+            if post.get("time", "").lower() == "now"]
 
 def get_stats(posts_data=None):
     """
