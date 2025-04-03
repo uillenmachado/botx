@@ -1,595 +1,843 @@
 """
-Gerenciador de Postagens para Bot do X (Twitter)
+Bot para X (Twitter) - Interface interativa e lógica principal
 
-Este módulo contém funções para gerenciar todas as operações relacionadas
-às postagens, incluindo a criação, aprovação, agendamento e listagem de posts.
-Também gerencia a persistência dos dados em arquivo JSON.
+Este módulo implementa o dashboard interativo no terminal e a lógica principal
+do bot, incluindo o agendamento de posts e o loop de execução.
 
 Autor: Uillen Machado
 Repositório: github.com/uillenmachado/botx
 """
 
-import json
-import os
 import logging
-import re
-import uuid
-from datetime import datetime
 import time
+import os
+import sys
+import schedule
+import threading
+from datetime import datetime, timedelta, date
+import calendar
+
 from config import (
-    POSTS_FILE, START_HOUR, END_HOUR, MAX_TWEET_LENGTH, 
-    DATE_FORMAT, TIME_PATTERN
+    START_HOUR, END_HOUR, POST_INTERVAL_MINUTES, LOG_FILE,
+    APPROVE_TIMEOUT, DAILY_POST_LIMIT, MONTHLY_POST_LIMIT,
+    TREND_UPDATE_HOUR, DATE_FORMAT, TREND_UPDATE_HOUR, WOEID_GLOBAL
+)
+from post_manager import (
+    load_posts, save_posts, get_post_list, create_post, edit_post, delete_post,
+    approve_post, schedule_post, mark_as_posted, get_scheduled_posts_for_recovery,
+    get_stats, validate_time
+)
+from twitter_api import (
+    initialize_api, get_trends, post_tweet, get_user_info
 )
 
-# Estrutura básica do arquivo de posts
-DEFAULT_POSTS_DATA = {
-    "pending": [],    # Posts criados mas não aprovados
-    "approved": [],   # Posts aprovados mas não agendados
-    "scheduled": [],  # Posts aprovados e agendados
-    "history": []     # Histórico de posts publicados
-}
+# Configuração do logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename=LOG_FILE,
+    filemode='a'
+)
 
-def load_posts():
+# Adicionar manipulador para exibir logs no console também
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+console.setFormatter(formatter)
+logging.getLogger('').addHandler(console)
+
+# Variáveis globais
+trends = []
+trends_last_updated = None
+monthly_posts = 0
+daily_posts = 0
+bot_running = True
+scheduler_thread = None
+
+# Função para limpar a tela
+def clear_screen():
+    """Limpa a tela do terminal para melhor visualização."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def format_trend_list():
     """
-    Carrega as postagens do arquivo posts.json ou inicializa um novo arquivo.
-    Em caso de erro ao ler o arquivo, cria um novo com a estrutura padrão.
+    Formata a lista de tendências para exibição.
     
     Returns:
-        dict: Dicionário com as listas de posts pendentes, aprovados e agendados.
+        list: Lista de strings formatadas com as tendências.
     """
-    try:
-        if os.path.exists(POSTS_FILE):
-            # Verificação adicional do tamanho do arquivo para prevenir falhas
-            if os.path.getsize(POSTS_FILE) == 0:
-                logging.error(f"Arquivo {POSTS_FILE} está vazio. Criando nova estrutura.")
-                return DEFAULT_POSTS_DATA.copy()
-                
-            with open(POSTS_FILE, "r", encoding="utf-8") as f:
-                try:
-                    file_content = f.read()
-                    if not file_content.strip():
-                        logging.error(f"Arquivo {POSTS_FILE} está vazio. Criando nova estrutura.")
-                        return DEFAULT_POSTS_DATA.copy()
-                    
-                    posts_data = json.loads(file_content)
-                    
-                    # Verifica se o arquivo tem a estrutura correta
-                    required_keys = ["pending", "approved", "scheduled", "history"]
-                    missing_keys = [key for key in required_keys if key not in posts_data]
-                    
-                    if missing_keys:
-                        logging.warning(f"Estrutura incorreta no arquivo posts.json. Chaves ausentes: {missing_keys}")
-                        for key in missing_keys:
-                            posts_data[key] = []
-                    
-                    # Verifica se as chaves são listas
-                    for key in required_keys:
-                        if not isinstance(posts_data.get(key, []), list):
-                            logging.warning(f"A chave '{key}' em posts.json não é uma lista. Corrigindo...")
-                            posts_data[key] = []
-                    
-                    # Retorna os dados carregados
-                    return posts_data
-                    
-                except (json.JSONDecodeError, ValueError) as e:
-                    logging.error(f"Erro ao decodificar {POSTS_FILE}: {e}. Criando backup e novo arquivo.")
-                    
-                    # Tenta criar um backup do arquivo corrompido
-                    try:
-                        backup_file = f"{POSTS_FILE}.corrupted.{int(time.time())}"
-                        with open(POSTS_FILE, "r", encoding="utf-8") as source:
-                            with open(backup_file, "w", encoding="utf-8") as target:
-                                target.write(source.read())
-                        logging.info(f"Backup do arquivo corrompido criado em {backup_file}")
-                    except Exception as backup_err:
-                        logging.error(f"Erro ao criar backup do arquivo corrompido: {backup_err}")
-                    
-                    return DEFAULT_POSTS_DATA.copy()
-        else:
-            # Arquivo não existe, cria um novo com a estrutura padrão
-            posts_data = DEFAULT_POSTS_DATA.copy()
-            save_posts(posts_data)
-            logging.info(f"Arquivo {POSTS_FILE} criado.")
-            return posts_data
-            
-    except Exception as e:
-        logging.error(f"Erro ao carregar posts: {e}")
-        return DEFAULT_POSTS_DATA.copy()
-
-def save_posts(posts_data):
-    """
-    Salva as postagens no arquivo posts.json.
-    Inclui tratamento de erros para garantir que os dados não sejam perdidos.
-    
-    Args:
-        posts_data (dict): Dicionário com as listas de posts.
-        
-    Returns:
-        bool: True se o arquivo foi salvo com sucesso, False caso contrário.
-    """
-    try:
-        # Verificação adicional da estrutura antes de salvar
-        if not isinstance(posts_data, dict):
-            logging.error(f"Erro ao salvar posts: a estrutura não é um dicionário")
-            return False
-            
-        required_keys = ["pending", "approved", "scheduled", "history"]
-        for key in required_keys:
-            if key not in posts_data:
-                posts_data[key] = []
-            elif not isinstance(posts_data[key], list):
-                posts_data[key] = []
-        
-        with open(POSTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(posts_data, f, indent=4, ensure_ascii=False)
-        return True
-        
-    except Exception as e:
-        logging.error(f"Erro ao salvar posts: {e}")
-        
-        # Tenta salvar em um arquivo alternativo em caso de erro
-        try:
-            backup_file = f"{POSTS_FILE}.backup.{int(time.time())}.json"
-            with open(backup_file, "w", encoding="utf-8") as f:
-                json.dump(posts_data, f, indent=4, ensure_ascii=False)
-            logging.info(f"Backup dos posts salvo em {backup_file}")
-            
-            # Tenta restaurar o arquivo principal a partir do backup
-            try:
-                with open(backup_file, "r", encoding="utf-8") as f_in:
-                    with open(POSTS_FILE, "w", encoding="utf-8") as f_out:
-                        f_out.write(f_in.read())
-                logging.info(f"Arquivo principal restaurado a partir do backup")
-                return True
-            except Exception as restore_err:
-                logging.critical(f"Falha ao restaurar arquivo principal: {restore_err}")
-                return False
-        except Exception as backup_err:
-            logging.critical(f"Falha ao criar backup dos posts: {backup_err}")
-            return False
-
-def validate_time(time_str):
-    """
-    Valida se o horário está no formato correto e dentro do intervalo permitido.
-    Usa expressão regular para validar o formato HH:MM.
-    
-    Args:
-        time_str (str): Horário no formato HH:MM ou "now".
-        
-    Returns:
-        bool: True se o horário é válido, False caso contrário.
-    """
-    try:
-        # Caso especial para postagem imediata
-        if time_str == "now":
-            return True
-        
-        # Verifica o formato usando expressão regular (HH:MM)
-        if not TIME_PATTERN.match(time_str):
-            return False
-        
-        # Extrai as horas e minutos
-        hours, minutes = map(int, time_str.split(':'))
-        
-        # Verifica se está dentro do intervalo permitido
-        start_hours, start_minutes = map(int, START_HOUR.split(':'))
-        end_hours, end_minutes = map(int, END_HOUR.split(':'))
-        
-        start_total_minutes = start_hours * 60 + start_minutes
-        end_total_minutes = end_hours * 60 + end_minutes
-        time_total_minutes = hours * 60 + minutes
-        
-        # Caso especial: se END_HOUR < START_HOUR (ex: 23:00 a 08:00)
-        if end_total_minutes < start_total_minutes:
-            # Válido se estiver entre START_HOUR e meia-noite OU entre meia-noite e END_HOUR
-            return (time_total_minutes >= start_total_minutes or 
-                   time_total_minutes <= end_total_minutes)
-        else:
-            # Caso normal: START_HOUR <= time <= END_HOUR
-            return start_total_minutes <= time_total_minutes <= end_total_minutes
-            
-    except ValueError:
-        return False
-
-def sanitize_text(text):
-    """
-    Sanitiza o texto da postagem para evitar problemas com caracteres especiais.
-    
-    Args:
-        text (str): Texto original da postagem.
-        
-    Returns:
-        str: Texto sanitizado.
-    """
-    # Remove caracteres de controle e normaliza espaços em branco
-    sanitized = ' '.join(text.strip().split())
-    
-    # Limita ao tamanho máximo permitido
-    if len(sanitized) > MAX_TWEET_LENGTH:
-        sanitized = sanitized[:MAX_TWEET_LENGTH]
-        
-    return sanitized
-
-def create_post(text, time="now", posts_data=None):
-    """
-    Cria uma nova postagem e a adiciona à lista de pendentes.
-    
-    Args:
-        text (str): Texto da postagem.
-        time (str, optional): Horário para postagem (HH:MM) ou "now" para postar assim
-                              que aprovado. Padrão é "now".
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        tuple: (bool, str) - Sucesso (True/False) e mensagem explicativa.
-    """
-    # Sanitização e validação do texto
-    text = sanitize_text(text)
-    
-    if not text:
-        return False, "O texto da postagem não pode estar vazio."
-    
-    if len(text) > MAX_TWEET_LENGTH:
-        return False, f"O texto excede o limite de {MAX_TWEET_LENGTH} caracteres. Atual: {len(text)}"
-    
-    # Validação do horário
-    if not validate_time(time):
-        return False, f"Formato de horário inválido ou fora do intervalo permitido ({START_HOUR}-{END_HOUR})."
-    
-    # Carrega os posts se não foram fornecidos
-    if posts_data is None:
-        posts_data = load_posts()
-    
-    # Cria o post com metadados e ID único
-    post = {
-        "id": str(uuid.uuid4()),  # Adiciona um ID único
-        "text": text,
-        "time": time,
-        "status": "pending",
-        "created_at": datetime.now().isoformat()
-    }
-    
-    # Adiciona à lista de pendentes
-    posts_data["pending"].append(post)
-    
-    # Salva as alterações
-    if save_posts(posts_data):
-        return True, f"Postagem criada e adicionada à lista de pendentes: '{text[:30]}{'...' if len(text) > 30 else ''}' às {time}"
-    else:
-        return False, "Erro ao salvar a postagem. Verifique o log para mais detalhes."
-
-def edit_post(post_index, new_text=None, new_time=None, status="pending", posts_data=None):
-    """
-    Edita uma postagem existente.
-    
-    Args:
-        post_index (int): Índice da postagem na lista.
-        new_text (str, optional): Novo texto para a postagem.
-        new_time (str, optional): Novo horário para a postagem.
-        status (str, optional): Status da postagem a ser editada 
-                               ("pending", "approved", "scheduled").
-        posts_data (dict, optional): Dicionário com as listas de posts.
-    
-    Returns:
-        tuple: (bool, str) - Sucesso (True/False) e mensagem explicativa.
-    """
-    # Carrega os posts se não foram fornecidos
-    if posts_data is None:
-        posts_data = load_posts()
-    
-    # Verifica se o status é válido
-    if status not in ["pending", "approved", "scheduled"]:
-        return False, "Status inválido."
-    
-    # Verifica se o índice é válido
-    if post_index < 0 or post_index >= len(posts_data[status]):
-        return False, f"Índice {post_index} de postagem inválido para status '{status}'."
-    
-    # Obtém o post
-    post = posts_data[status][post_index]
-    
-    # Atualiza o texto se fornecido
-    if new_text is not None:
-        new_text = sanitize_text(new_text)
-        if not new_text:
-            return False, "O texto da postagem não pode estar vazio."
-        if len(new_text) > MAX_TWEET_LENGTH:
-            return False, f"O texto excede o limite de {MAX_TWEET_LENGTH} caracteres."
-        post["text"] = new_text
-        post["edited_at"] = datetime.now().isoformat()
-    
-    # Atualiza o horário se fornecido
-    if new_time is not None:
-        if not validate_time(new_time):
-            return False, f"Formato de horário inválido ou fora do intervalo permitido ({START_HOUR}-{END_HOUR})."
-        post["time"] = new_time
-        post["edited_at"] = datetime.now().isoformat()
-    
-    # Salva as alterações
-    if save_posts(posts_data):
-        return True, f"Postagem {post_index+1} editada com sucesso."
-    else:
-        return False, "Erro ao salvar as alterações. Verifique o log para mais detalhes."
-
-def delete_post(post_index, status="pending", posts_data=None):
-    """
-    Exclui uma postagem.
-    
-    Args:
-        post_index (int): Índice da postagem na lista.
-        status (str, optional): Status da postagem a ser excluída 
-                               ("pending", "approved", "scheduled").
-        posts_data (dict, optional): Dicionário com as listas de posts.
-    
-    Returns:
-        tuple: (bool, str) - Sucesso (True/False) e mensagem explicativa.
-    """
-    # Carrega os posts se não foram fornecidos
-    if posts_data is None:
-        posts_data = load_posts()
-    
-    # Verifica se o status é válido
-    if status not in ["pending", "approved", "scheduled"]:
-        return False, "Status inválido."
-    
-    # Verifica se o índice é válido
-    if post_index < 0 or post_index >= len(posts_data[status]):
-        return False, f"Índice {post_index} de postagem inválido para status '{status}'."
-    
-    # Remove o post
-    removed_post = posts_data[status].pop(post_index)
-    
-    # Salva as alterações
-    if save_posts(posts_data):
-        return True, f"Postagem removida com sucesso: '{removed_post['text'][:30]}{'...' if len(removed_post['text']) > 30 else ''}'."
-    else:
-        return False, "Erro ao salvar as alterações após exclusão. Verifique o log para mais detalhes."
-
-def approve_post(post_index, approve=True, new_time=None, posts_data=None):
-    """
-    Aprova ou rejeita uma postagem pendente.
-    
-    Args:
-        post_index (int): Índice da postagem na lista de pendentes.
-        approve (bool, optional): True para aprovar, False para rejeitar. Padrão é True.
-        new_time (str, optional): Novo horário para postagem, se diferente do original.
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        tuple: (bool, str, dict) - Sucesso (True/False), mensagem explicativa e post afetado (ou None).
-    """
-    # Carrega os posts se não foram fornecidos
-    if posts_data is None:
-        posts_data = load_posts()
-    
-    # Verifica se o índice é válido
-    if post_index < 0 or post_index >= len(posts_data["pending"]):
-        return False, "Índice de postagem inválido.", None
-    
-    # Obtém o post
-    post = posts_data["pending"][post_index]
-    
-    # Se rejeitado, simplesmente remove da lista de pendentes
-    if not approve:
-        posts_data["pending"].pop(post_index)
-        save_posts(posts_data)
-        return True, "Postagem rejeitada e removida da lista.", None
-    
-    # Se aprovado, atualiza o horário se fornecido
-    if new_time is not None:
-        if not validate_time(new_time):
-            return False, f"Formato de horário inválido ou fora do intervalo permitido ({START_HOUR}-{END_HOUR}).", None
-        post["time"] = new_time
-    
-    # Atualiza status e timestamp
-    post["status"] = "approved"
-    post["approved_at"] = datetime.now().isoformat()
-    
-    # Move para a lista de aprovados
-    posts_data["approved"].append(post)
-    posts_data["pending"].pop(post_index)
-    
-    # Salva as alterações
-    if save_posts(posts_data):
-        return True, f"Postagem aprovada: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}' para {post['time']}", post
-    else:
-        return False, "Erro ao salvar as alterações após aprovação. Verifique o log para mais detalhes.", None
-
-def schedule_post(post_index, scheduled=True, posts_data=None):
-    """
-    Marca uma postagem aprovada como agendada.
-    
-    Args:
-        post_index (int): Índice da postagem na lista de aprovados.
-        scheduled (bool, optional): True para agendar, False para desagendar. Padrão é True.
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        tuple: (bool, str, dict) - Sucesso (True/False), mensagem explicativa e post afetado (ou None).
-    """
-    # Carrega os posts se não foram fornecidos
-    if posts_data is None:
-        posts_data = load_posts()
-    
-    # Verifica se o índice é válido
-    if post_index < 0 or post_index >= len(posts_data["approved"]):
-        return False, "Índice de postagem inválido.", None
-    
-    # Obtém o post
-    post = posts_data["approved"][post_index]
-    
-    # Verifica se o horário é válido para agendamento
-    if post["time"] == "now":
-        return False, "Não é possível agendar uma postagem com horário 'now'.", None
-    
-    # Verificar se já não está agendado (usando ID único)
-    post_id = post.get("id", None)
-    if scheduled and post_id:
-        # Verifica se já existe um post agendado com o mesmo ID
-        for scheduled_post in posts_data["scheduled"]:
-            if scheduled_post.get("id", None) == post_id:
-                return False, f"Esta postagem já está agendada para {scheduled_post['time']}.", None
-    
-    # Atualiza status e timestamp
-    post["status"] = "scheduled" if scheduled else "approved"
-    post["scheduled_at"] = datetime.now().isoformat() if scheduled else None
-    
-    # Move para a lista apropriada
-    if scheduled:
-        posts_data["scheduled"].append(post)
-        posts_data["approved"].pop(post_index)
-        message = f"Postagem agendada: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}' para {post['time']}"
-    else:
-        posts_data["approved"].append(post)
-        # Encontra e remove da lista de agendados usando o ID único
-        for i, p in enumerate(posts_data["scheduled"]):
-            if p.get("id", None) == post_id:
-                posts_data["scheduled"].pop(i)
-                break
-        message = f"Agendamento removido: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}'"
-    
-    # Salva as alterações
-    if save_posts(posts_data):
-        return True, message, post
-    else:
-        return False, "Erro ao salvar as alterações após agendamento. Verifique o log para mais detalhes.", None
-
-def mark_as_posted(post, posts_data=None):
-    """
-    Marca uma postagem como publicada e a remove da lista de agendados.
-    
-    Args:
-        post (dict): Postagem a ser marcada como publicada.
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        bool: True se a operação foi bem-sucedida, False caso contrário.
-    """
-    # Carrega os posts se não foram fornecidos
-    if posts_data is None:
-        posts_data = load_posts()
-    
-    # Adiciona timestamp de publicação
-    post["posted_at"] = datetime.now().isoformat()
-    post["status"] = "posted"
-    
-    # Adiciona ao histórico
-    posts_data["history"].append(post)
-    
-    # Remove da lista de agendados se estiver lá, usando o ID único
-    post_id = post.get("id", None)
-    if post_id:
-        posts_data["scheduled"] = [p for p in posts_data["scheduled"] 
-                                if p.get("id", None) != post_id]
-    else:
-        # Fallback para compatibilidade com posts antigos sem ID
-        posts_data["scheduled"] = [p for p in posts_data["scheduled"] 
-                                if p["text"] != post["text"] or p["time"] != post["time"]]
-    
-    # Salva as alterações
-    return save_posts(posts_data)
-
-def get_scheduled_posts_for_recovery(posts_data=None):
-    """
-    Retorna a lista de posts agendados para recuperação de agendamentos.
-    Útil para recriar agendamentos após reiniciar o bot.
-    
-    Args:
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        list: Lista de posts agendados.
-    """
-    # Carrega os posts se não foram fornecidos
-    if posts_data is None:
-        posts_data = load_posts()
-        
-    return posts_data["scheduled"]
-
-def get_post_list(status="all", posts_data=None):
-    """
-    Retorna uma lista formatada de postagens de acordo com o status.
-    
-    Args:
-        status (str, optional): Status das postagens ("pending", "approved", 
-                               "scheduled", "history" ou "all"). Padrão é "all".
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        list: Lista de strings formatadas com as informações das postagens.
-    """
-    # Carrega os posts se não foram fornecidos
-    if posts_data is None:
-        posts_data = load_posts()
+    global trends, trends_last_updated
     
     result = []
     
-    if status == "all" or status == "pending":
-        for i, post in enumerate(posts_data["pending"]):
-            created_at = datetime.fromisoformat(post["created_at"]).strftime(DATE_FORMAT) if "created_at" in post else "N/A"
-            post_id = post.get("id", "N/A")[:8]  # Exibe apenas os primeiros 8 caracteres do ID
-            result.append(f"Pendente #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Criado em: {created_at}")
+    if not trends:
+        result.append("Nenhuma tendência disponível. Use a opção 'Atualizar tendências' para buscar.")
+        return result
     
-    if status == "all" or status == "approved":
-        for i, post in enumerate(posts_data["approved"]):
-            approved_at = datetime.fromisoformat(post["approved_at"]).strftime(DATE_FORMAT) if "approved_at" in post else "N/A"
-            post_id = post.get("id", "N/A")[:8]
-            result.append(f"Aprovado #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Aprovado em: {approved_at}")
+    result.append(f"Tendências globais (atualizado em: {trends_last_updated.strftime(DATE_FORMAT) if trends_last_updated else 'N/A'}):")
     
-    if status == "all" or status == "scheduled":
-        for i, post in enumerate(posts_data["scheduled"]):
-            scheduled_at = datetime.fromisoformat(post["scheduled_at"]).strftime(DATE_FORMAT) if "scheduled_at" in post else "N/A"
-            post_id = post.get("id", "N/A")[:8]
-            result.append(f"Agendado #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Agendado em: {scheduled_at}")
-    
-    if status == "all" or status == "history":
-        for i, post in enumerate(posts_data["history"]):
-            posted_at = datetime.fromisoformat(post["posted_at"]).strftime(DATE_FORMAT) if "posted_at" in post else "N/A"
-            post_id = post.get("id", "N/A")[:8]
-            result.append(f"Publicado #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Publicado em: {posted_at}")
+    for i, trend in enumerate(trends, 1):
+        volume = trend.get("volume", "N/A")
+        volume_str = f"{volume:,}".replace(',', '.') if isinstance(volume, int) else "N/A"
+        result.append(f"{i}. {trend.get('name', 'N/A')} | Volume: {volume_str}")
     
     return result
 
-def get_stats(posts_data=None):
+def update_trends():
     """
-    Retorna estatísticas sobre as postagens.
-    
-    Args:
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
+    Atualiza as tendências globais.
     
     Returns:
-        dict: Dicionário com as estatísticas.
+        bool: True se as tendências foram atualizadas com sucesso.
     """
-    # Carrega os posts se não foram fornecidos
-    if posts_data is None:
-        posts_data = load_posts()
+    global trends, trends_last_updated
     
-    stats = {
-        "total_pending": len(posts_data["pending"]),
-        "total_approved": len(posts_data["approved"]),
-        "total_scheduled": len(posts_data["scheduled"]),
-        "total_posted": len(posts_data["history"]),
-        "total_all": len(posts_data["pending"]) + len(posts_data["approved"]) + 
-                     len(posts_data["scheduled"]) + len(posts_data["history"])
-    }
+    logging.info("Atualizando tendências globais...")
+    try:
+        trends_data, timestamp = get_trends()
+        
+        if trends_data and len(trends_data) > 0 and "error" not in trends_data[0].get("name", "").lower():
+            trends = trends_data
+            trends_last_updated = timestamp
+            logging.info(f"Tendências atualizadas: {', '.join([t['name'] for t in trends])}")
+            return True
+        else:
+            logging.error(f"Falha ao atualizar tendências: {trends_data[0]['name']}")
+            return False
+    except Exception as e:
+        logging.error(f"Erro ao atualizar tendências: {e}")
+        return False
+
+def load_post_counts():
+    """
+    Carrega as contagens de posts diários e mensais a partir do arquivo de posts.
     
-    # Estatísticas por dia (posts publicados)
+    Returns:
+        tuple: (int, int) - Contagem mensal e diária de posts.
+    """
+    posts_data = load_posts()
     today = datetime.now().date()
-    posts_today = 0
+    current_month = today.replace(day=1)
+    
+    monthly_count = 0
+    daily_count = 0
     
     for post in posts_data["history"]:
         if "posted_at" in post:
             posted_date = datetime.fromisoformat(post["posted_at"]).date()
+            # Conta mensal
+            if posted_date.replace(day=1) == current_month:
+                monthly_count += 1
+            # Conta diária
             if posted_date == today:
-                posts_today += 1
+                daily_count += 1
     
-    stats["posts_today"] = posts_today
+    logging.info(f"Contagens carregadas: {monthly_count} posts neste mês, {daily_count} posts hoje")
+    return monthly_count, daily_count
+
+def can_post_today():
+    """
+    Verifica se é possível postar hoje, considerando os limites diários.
     
-    return stats
+    Returns:
+        bool: True se é possível postar hoje.
+    """
+    global daily_posts
+    
+    if daily_posts >= DAILY_POST_LIMIT:
+        logging.warning(f"Limite diário de {DAILY_POST_LIMIT} posts atingido")
+        return False
+    return True
+
+def can_post_this_month():
+    """
+    Verifica se é possível postar este mês, considerando os limites mensais.
+    
+    Returns:
+        bool: True se é possível postar este mês.
+    """
+    global monthly_posts
+    
+    if monthly_posts >= MONTHLY_POST_LIMIT:
+        logging.warning(f"Limite mensal de {MONTHLY_POST_LIMIT} posts atingido")
+        return False
+    return True
+
+def reset_daily_count():
+    """Reseta o contador diário de posts à meia-noite."""
+    global daily_posts
+    daily_posts = 0
+    logging.info("Contador diário de posts resetado")
+
+def reset_monthly_count():
+    """Reseta o contador mensal de posts no primeiro dia do mês."""
+    global monthly_posts
+    monthly_posts = 0
+    logging.info("Contador mensal de posts resetado")
+
+def post_scheduled_tweet(post):
+    """
+    Publica um tweet agendado.
+    
+    Args:
+        post (dict): Informações do post a ser publicado.
+    
+    Returns:
+        bool: True se o post foi publicado com sucesso.
+    """
+    global monthly_posts, daily_posts
+    
+    if not can_post_today() or not can_post_this_month():
+        logging.warning(f"Post '{post['text'][:30]}...' não publicado devido aos limites da API")
+        return False
+    
+    logging.info(f"Publicando post agendado: '{post['text'][:50]}...'")
+    
+    try:
+        success, message, tweet_data = post_tweet(post["text"])
+        
+        if success:
+            # Atualiza contadores
+            monthly_posts += 1
+            daily_posts += 1
+            
+            # Marca como publicado
+            mark_as_posted(post)
+            
+            logging.info(f"Post publicado com sucesso: {message}")
+            return True
+        else:
+            logging.error(f"Falha ao publicar post: {message}")
+            return False
+    except Exception as e:
+        logging.error(f"Erro ao publicar post agendado: {e}")
+        return False
+
+def schedule_post_at_time(post):
+    """
+    Agenda um post para um horário específico.
+    
+    Args:
+        post (dict): Informações do post a ser agendado.
+    
+    Returns:
+        bool: True se o agendamento foi bem-sucedido.
+    """
+    if post["time"] == "now":
+        return False
+    
+    try:
+        # Extrai o horário
+        time_parts = post["time"].split(":")
+        hour = int(time_parts[0])
+        minute = int(time_parts[1])
+        
+        # Define o horário no schedule
+        job = schedule.every().day.at(post["time"]).do(post_scheduled_tweet, post)
+        logging.info(f"Post agendado para {post['time']}: '{post['text'][:50]}...'")
+        return True
+    except Exception as e:
+        logging.error(f"Erro ao agendar post: {e}")
+        return False
+
+def create_new_post():
+    """Interface para criar uma nova postagem."""
+    clear_screen()
+    print("\n===== CRIAR NOVA POSTAGEM =====\n")
+    
+    # Exibe tendências para inspiração
+    print("\nTendências atuais para inspiração:")
+    for line in format_trend_list():
+        print(line)
+    
+    print("\nDigite o texto da sua postagem:")
+    text = input("> ")
+    
+    if not text.strip():
+        print("Texto vazio! A postagem não foi criada.")
+        input("\nPressione ENTER para continuar...")
+        return
+    
+    print("\nDigite o horário para a postagem (HH:MM) ou 'now' para postar assim que aprovado:")
+    time_str = input("> ")
+    
+    if not time_str:
+        time_str = "now"
+    
+    success, message = create_post(text, time_str)
+    
+    if success:
+        print(f"\nSucesso! {message}")
+    else:
+        print(f"\nErro! {message}")
+    
+    input("\nPressione ENTER para continuar...")
+
+def list_posts():
+    """Interface para listar postagens por status."""
+    while True:
+        clear_screen()
+        print("\n===== LISTAR POSTAGENS =====\n")
+        print("1. Pendentes")
+        print("2. Aprovadas")
+        print("3. Agendadas")
+        print("4. Histórico de publicações")
+        print("5. Todas")
+        print("0. Voltar")
+        
+        choice = input("\nEscolha uma opção: ")
+        
+        if choice == "0":
+            break
+        
+        status_map = {
+            "1": "pending",
+            "2": "approved",
+            "3": "scheduled",
+            "4": "history",
+            "5": "all"
+        }
+        
+        if choice in status_map:
+            status = status_map[choice]
+            post_list = get_post_list(status)
+            
+            clear_screen()
+            print(f"\n===== POSTAGENS {status.upper()} =====\n")
+            
+            if not post_list:
+                print("Nenhuma postagem encontrada.")
+            else:
+                for post in post_list:
+                    print(post)
+                
+                # Opções para gerenciar posts pendentes e aprovados
+                if choice in ["1", "2", "3"]:
+                    print("\nOpções:")
+                    print("E - Editar uma postagem")
+                    print("D - Deletar uma postagem")
+                    print("V - Voltar")
+                    
+                    action = input("\nEscolha uma ação: ").upper()
+                    
+                    if action == "E":
+                        edit_existing_post(status)
+                    elif action == "D":
+                        delete_existing_post(status)
+            
+            input("\nPressione ENTER para continuar...")
+        else:
+            print("Opção inválida!")
+            time.sleep(1)
+
+def edit_existing_post(status):
+    """
+    Interface para editar uma postagem existente.
+    
+    Args:
+        status (str): Status da postagem a ser editada.
+    """
+    try:
+        post_index = int(input("\nDigite o número da postagem para editar: ")) - 1
+        
+        if post_index < 0:
+            print("Número inválido!")
+            return
+        
+        print("\nDigite o novo texto (deixe em branco para manter o atual):")
+        new_text = input("> ")
+        
+        print("\nDigite o novo horário (deixe em branco para manter o atual):")
+        new_time = input("> ")
+        
+        success, message = edit_post(
+            post_index,
+            new_text=new_text if new_text.strip() else None,
+            new_time=new_time if new_time.strip() else None,
+            status=status
+        )
+        
+        if success:
+            print(f"\nSucesso! {message}")
+        else:
+            print(f"\nErro! {message}")
+    except ValueError:
+        print("Entrada inválida! Digite apenas números.")
+    except Exception as e:
+        print(f"Erro ao editar postagem: {e}")
+
+def delete_existing_post(status):
+    """
+    Interface para deletar uma postagem existente.
+    
+    Args:
+        status (str): Status da postagem a ser deletada.
+    """
+    try:
+        post_index = int(input("\nDigite o número da postagem para deletar: ")) - 1
+        
+        if post_index < 0:
+            print("Número inválido!")
+            return
+        
+        confirm = input(f"Tem certeza que deseja deletar a postagem #{post_index+1}? (S/N): ").upper()
+        
+        if confirm == "S":
+            success, message = delete_post(post_index, status=status)
+            
+            if success:
+                print(f"\nSucesso! {message}")
+            else:
+                print(f"\nErro! {message}")
+        else:
+            print("Operação cancelada.")
+    except ValueError:
+        print("Entrada inválida! Digite apenas números.")
+    except Exception as e:
+        print(f"Erro ao deletar postagem: {e}")
+
+def approve_posts():
+    """Interface para aprovar postagens pendentes."""
+    clear_screen()
+    print("\n===== APROVAR POSTAGENS =====\n")
+    
+    # Carrega a lista de postagens pendentes
+    post_list = get_post_list("pending")
+    
+    if not post_list:
+        print("Não há postagens pendentes para aprovação.")
+        input("\nPressione ENTER para continuar...")
+        return
+    
+    for i, post_str in enumerate(post_list):
+        print(f"\n{post_str}")
+        
+        print("\nOpções:")
+        print("A - Aprovar")
+        print("R - Rejeitar")
+        print("S - Pular")
+        print("E - Editar antes de aprovar")
+        print("C - Cancelar aprovações")
+        
+        # Timeout para aprovação
+        print(f"\nAguardando resposta... (timeout em {APPROVE_TIMEOUT} segundos)")
+        
+        start_time = time.time()
+        action = None
+        
+        while time.time() - start_time < APPROVE_TIMEOUT and action is None:
+            if sys.stdin in select.select([sys.stdin], [], [], 0.1)[0]:
+                action = input().upper()
+        
+        if action is None:
+            print("Timeout! Pulando para a próxima postagem.")
+            continue
+        
+        if action == "A":
+            # Aprovar
+            new_time = None
+            time_change = input("Deseja alterar o horário? (S/N): ").upper()
+            
+            if time_change == "S":
+                new_time = input("Digite o novo horário (HH:MM ou 'now'): ")
+            
+            success, message, post = approve_post(i, True, new_time)
+            
+            if success:
+                print(f"Sucesso! {message}")
+                
+                # Perguntar se deseja postar agora ou agendar
+                if post["time"] != "now":
+                    post_now = input("Deseja postar agora em vez de agendar? (S/N): ").upper()
+                    
+                    if post_now == "S":
+                        # Postar imediatamente
+                        if can_post_today() and can_post_this_month():
+                            success, message, _ = post_tweet(post["text"])
+                            
+                            if success:
+                                print(f"Post publicado! {message}")
+                                monthly_posts += 1
+                                daily_posts += 1
+                                
+                                # Remove da lista de aprovados e adiciona ao histórico
+                                posts_data = load_posts()
+                                post_index = next((i for i, p in enumerate(posts_data["approved"]) 
+                                                 if p.get("id") == post.get("id")), None)
+                                
+                                if post_index is not None:
+                                    posts_data["approved"].pop(post_index)
+                                    post["posted_at"] = datetime.now().isoformat()
+                                    post["status"] = "posted"
+                                    posts_data["history"].append(post)
+                                    save_posts(posts_data)
+                            else:
+                                print(f"Erro ao publicar! {message}")
+                        else:
+                            print("Não é possível postar devido aos limites da API!")
+                else:
+                    print("Post aprovado para publicação imediata após aprovação.")
+            else:
+                print(f"Erro! {message}")
+        
+        elif action == "R":
+            # Rejeitar
+            success, message, _ = approve_post(i, False)
+            
+            if success:
+                print(f"Sucesso! {message}")
+            else:
+                print(f"Erro! {message}")
+        
+        elif action == "E":
+            # Editar
+            print("\nDigite o novo texto (deixe em branco para manter o atual):")
+            new_text = input("> ")
+            
+            print("\nDigite o novo horário (deixe em branco para manter o atual):")
+            new_time = input("> ")
+            
+            success, message = edit_post(
+                i,
+                new_text=new_text if new_text.strip() else None,
+                new_time=new_time if new_time.strip() else None,
+                status="pending"
+            )
+            
+            if success:
+                print(f"Sucesso! {message}")
+                # Perguntar se deseja aprovar após edição
+                approve_after_edit = input("Deseja aprovar esta postagem agora? (S/N): ").upper()
+                
+                if approve_after_edit == "S":
+                    success, message, _ = approve_post(i, True)
+                    
+                    if success:
+                        print(f"Sucesso! {message}")
+                    else:
+                        print(f"Erro! {message}")
+            else:
+                print(f"Erro! {message}")
+        
+        elif action == "C":
+            # Cancelar o processo de aprovação
+            print("Processo de aprovação cancelado.")
+            break
+        
+        # Pausa antes da próxima postagem
+        input("\nPressione ENTER para continuar...")
+    
+    print("\nProcesso de aprovação concluído.")
+    input("\nPressione ENTER para voltar ao menu principal...")
+
+def schedule_approved_posts():
+    """Interface para agendar postagens aprovadas."""
+    clear_screen()
+    print("\n===== AGENDAR POSTAGENS =====\n")
+    
+    # Carrega a lista de postagens aprovadas
+    posts_data = load_posts()
+    approved_posts = get_post_list("approved")
+    
+    if not approved_posts:
+        print("Não há postagens aprovadas para agendar.")
+        input("\nPressione ENTER para continuar...")
+        return
+    
+    for i, post_str in enumerate(approved_posts):
+        post = posts_data["approved"][i]
+        
+        # Pula posts com horário "now" pois eles serão postados imediatamente
+        if post["time"] == "now":
+            continue
+        
+        print(f"\n{post_str}")
+        
+        print("\nOpções:")
+        print("A - Agendar para o horário definido")
+        print("P - Postar agora")
+        print("S - Pular")
+        print("C - Cancelar agendamentos")
+        
+        action = input("\nEscolha uma opção: ").upper()
+        
+        if action == "A":
+            # Agendar
+            success, message, scheduled_post = schedule_post(i, True)
+            
+            if success:
+                print(f"Sucesso! {message}")
+                
+                # Agenda o post utilizando o scheduler
+                schedule_post_at_time(scheduled_post)
+            else:
+                print(f"Erro! {message}")
+        
+        elif action == "P":
+            # Postar agora
+            if can_post_today() and can_post_this_month():
+                success, message, _ = post_tweet(post["text"])
+                
+                if success:
+                    print(f"Post publicado! {message}")
+                    monthly_posts += 1
+                    daily_posts += 1
+                    
+                    # Remove da lista de aprovados e adiciona ao histórico
+                    post["posted_at"] = datetime.now().isoformat()
+                    post["status"] = "posted"
+                    posts_data["history"].append(post)
+                    posts_data["approved"].pop(i)
+                    save_posts(posts_data)
+                else:
+                    print(f"Erro ao publicar! {message}")
+            else:
+                print("Não é possível postar devido aos limites da API!")
+        
+        elif action == "C":
+            # Cancelar o processo de agendamento
+            print("Processo de agendamento cancelado.")
+            break
+    
+    print("\nProcesso de agendamento concluído.")
+    input("\nPressione ENTER para voltar ao menu principal...")
+
+def show_statistics():
+    """Exibe estatísticas sobre as postagens."""
+    clear_screen()
+    print("\n===== ESTATÍSTICAS =====\n")
+    
+    stats = get_stats()
+    user_success, user_info = get_user_info()
+    
+    print(f"Postagens pendentes: {stats['total_pending']}")
+    print(f"Postagens aprovadas: {stats['total_approved']}")
+    print(f"Postagens agendadas: {stats['total_scheduled']}")
+    print(f"Postagens publicadas: {stats['total_posted']}")
+    print(f"Total de postagens: {stats['total_all']}")
+    print(f"Postagens hoje: {stats['posts_today']}")
+    print(f"Postagens neste mês: {monthly_posts}")
+    print(f"Limite diário: {daily_posts}/{DAILY_POST_LIMIT}")
+    print(f"Limite mensal: {monthly_posts}/{MONTHLY_POST_LIMIT}")
+    
+    if user_success:
+        print("\nInformações da conta:")
+        print(f"Nome: {user_info.get('name', 'N/A')}")
+        print(f"Usuário: @{user_info.get('username', 'N/A')}")
+        
+        if 'followers' in user_info:
+            print(f"Seguidores: {user_info.get('followers', 'N/A')}")
+            print(f"Seguindo: {user_info.get('following', 'N/A')}")
+            print(f"Total de tweets: {user_info.get('tweets', 'N/A')}")
+    
+    input("\nPressione ENTER para continuar...")
+
+def display_dashboard():
+    """Exibe o dashboard interativo e processa a entrada do usuário."""
+    while bot_running:
+        clear_screen()
+        
+        # Cabeçalho
+        print("\n===== BOT PARA X - DASHBOARD =====\n")
+        
+        # Informações rápidas
+        stats = get_stats()
+        print(f"Postagens pendentes: {stats['total_pending']} | "
+              f"Aprovadas: {stats['total_approved']} | "
+              f"Agendadas: {stats['total_scheduled']} | "
+              f"Publicadas hoje: {stats['posts_today']}")
+        
+        print(f"Limites: Diário {daily_posts}/{DAILY_POST_LIMIT} | "
+              f"Mensal {monthly_posts}/{MONTHLY_POST_LIMIT}")
+        
+        # Tendências
+        print("\nTendências globais:")
+        trend_list = format_trend_list()
+        for i, trend in enumerate(trend_list[:3]):  # Mostra apenas 3 tendências no dashboard
+            print(trend)
+        
+        # Menu principal
+        print("\nMenu Principal:")
+        print("1. Criar nova postagem")
+        print("2. Listar postagens")
+        print("3. Aprovar postagens pendentes")
+        print("4. Agendar postagens aprovadas")
+        print("5. Ver todas as tendências")
+        print("6. Atualizar tendências")
+        print("7. Ver estatísticas")
+        print("0. Sair")
+        
+        choice = input("\nEscolha uma opção: ")
+        
+        if choice == "1":
+            create_new_post()
+        elif choice == "2":
+            list_posts()
+        elif choice == "3":
+            approve_posts()
+        elif choice == "4":
+            schedule_approved_posts()
+        elif choice == "5":
+            clear_screen()
+            print("\n===== TENDÊNCIAS GLOBAIS =====\n")
+            for line in format_trend_list():
+                print(line)
+            input("\nPressione ENTER para continuar...")
+        elif choice == "6":
+            print("\nAtualizando tendências...")
+            if update_trends():
+                print("Tendências atualizadas com sucesso!")
+            else:
+                print("Falha ao atualizar tendências. Verifique o log para mais detalhes.")
+            time.sleep(2)
+        elif choice == "7":
+            show_statistics()
+        elif choice == "0":
+            confirm = input("Tem certeza que deseja sair? (S/N): ").upper()
+            if confirm == "S":
+                global bot_running
+                bot_running = False
+                print("Encerrando o bot...")
+                break
+        else:
+            print("Opção inválida!")
+            time.sleep(1)
+
+def process_pending_now_posts():
+    """
+    Processa posts aprovados com horário "now" para publicação imediata.
+    Executado a cada 5 minutos pelo scheduler.
+    """
+    if not can_post_today() or not can_post_this_month():
+        logging.warning("Não é possível processar posts 'now' devido aos limites da API")
+        return
+    
+    posts_data = load_posts()
+    now_posts = [p for p in posts_data["approved"] if p["time"] == "now"]
+    
+    if not now_posts:
+        return
+    
+    logging.info(f"Processando {len(now_posts)} posts com horário 'now'")
+    
+    for post in now_posts:
+        logging.info(f"Publicando post imediato: '{post['text'][:50]}...'")
+        
+        success, message, tweet_data = post_tweet(post["text"])
+        
+        if success:
+            # Atualiza contadores
+            global monthly_posts, daily_posts
+            monthly_posts += 1
+            daily_posts += 1
+            
+            # Remove da lista de aprovados e adiciona ao histórico
+            posts_data["approved"] = [p for p in posts_data["approved"] 
+                                    if p.get("id") != post.get("id")]
+            
+            post["posted_at"] = datetime.now().isoformat()
+            post["status"] = "posted"
+            posts_data["history"].append(post)
+            save_posts(posts_data)
+            
+            logging.info(f"Post 'now' publicado com sucesso: {message}")
+        else:
+            logging.error(f"Falha ao publicar post 'now': {message}")
+
+def scheduler_job():
+    """Função executada pela thread do scheduler."""
+    global bot_running
+    
+    # Inicializa o scheduler
+    schedule.every().day.at("00:00").do(reset_daily_count)
+    schedule.every().day.at(TREND_UPDATE_HOUR).do(update_trends)
+    schedule.every(5).minutes.do(process_pending_now_posts)
+    
+    # Agenda para verificar o primeiro dia do mês
+    def check_month_reset():
+        if datetime.now().day == 1 and datetime.now().hour == 0:
+            reset_monthly_count()
+    
+    schedule.every().hour.do(check_month_reset)
+    
+    while bot_running:
+        schedule.run_pending()
+        time.sleep(1)
+
+def main():
+    """Função principal do bot."""
+    global monthly_posts, daily_posts, scheduler_thread, trends, trends_last_updated
+    
+    try:
+        clear_screen()
+        print("Inicializando Bot para X...\n")
+        
+        # Inicializa a API
+        success, message = initialize_api()
+        if not success:
+            logging.critical(f"Falha ao inicializar API: {message}")
+            print(f"Erro de inicialização: {message}")
+            print("\nVerifique suas credenciais no arquivo .env e tente novamente.")
+            return
+        
+        print(f"API inicializada: {message}")
+        
+        # Carrega contadores de posts
+        monthly_posts, daily_posts = load_post_counts()
+        print(f"Contadores carregados: {monthly_posts} posts neste mês, {daily_posts} posts hoje")
+        
+        # Carrega tendências
+        print("Carregando tendências...")
+        if update_trends():
+            print("Tendências carregadas com sucesso!")
+        else:
+            print("Aviso: Não foi possível carregar tendências. Tentaremos novamente mais tarde.")
+        
+        # Recuperação de agendamentos
+        print("Recuperando agendamentos...")
+        scheduled_posts = get_scheduled_posts_for_recovery()
+        
+        if scheduled_posts:
+            print(f"Encontrados {len(scheduled_posts)} posts agendados para recuperação.")
+            for post in scheduled_posts:
+                if post["time"] != "now" and validate_time(post["time"]):
+                    schedule_post_at_time(post)
+            print("Agendamentos recuperados com sucesso!")
+        else:
+            print("Nenhum agendamento para recuperar.")
+        
+        # Inicia a thread do scheduler
+        scheduler_thread = threading.Thread(target=scheduler_job)
+        scheduler_thread.daemon = True
+        scheduler_thread.start()
+        
+        print("\nBot inicializado com sucesso!")
+        print("Pressione ENTER para acessar o dashboard...")
+        input()
+        
+        # Inicia o dashboard interativo
+        display_dashboard()
+        
+    except KeyboardInterrupt:
+        print("\nBot encerrado pelo usuário.")
+    except Exception as e:
+        logging.critical(f"Erro crítico: {e}")
+        print(f"\nErro crítico: {e}")
+        print("Verifique o arquivo de log para mais detalhes.")
+    finally:
+        # Garante que os recursos sejam liberados ao sair
+        global bot_running
+        bot_running = False
+        
+        # Aguarda a thread do scheduler terminar
+        if scheduler_thread and scheduler_thread.is_alive():
+            scheduler_thread.join(timeout=1)
+        
+        logging.info("Bot encerrado")
+        print("\nBot encerrado. Até a próxima!")
+
+# Necessário para processar input com timeout
+import select
+
+if __name__ == "__main__":
+    main()
