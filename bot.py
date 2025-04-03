@@ -14,6 +14,7 @@ import os
 import sys
 import schedule
 import threading
+import select  # Adicionado import do módulo select
 from datetime import datetime, timedelta, date
 import calendar
 
@@ -53,6 +54,7 @@ monthly_posts = 0
 daily_posts = 0
 bot_running = True
 scheduler_thread = None
+scheduled_jobs = {}  # Dicionário para armazenar referências aos jobs agendados
 
 # Função para limpar a tela
 def clear_screen():
@@ -223,6 +225,8 @@ def schedule_post_at_time(post):
     Returns:
         bool: True se o agendamento foi bem-sucedido.
     """
+    global scheduled_jobs
+    
     if post["time"] == "now":
         return False
     
@@ -232,8 +236,20 @@ def schedule_post_at_time(post):
         hour = int(time_parts[0])
         minute = int(time_parts[1])
         
+        # Verifica se o horário já passou hoje
+        now = datetime.now()
+        schedule_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        
+        if schedule_time < now:
+            logging.info(f"Horário {post['time']} já passou hoje, agendando para amanhã")
+        
         # Define o horário no schedule
         job = schedule.every().day.at(post["time"]).do(post_scheduled_tweet, post)
+        
+        # Armazena referência ao job usando o ID do post
+        if "id" in post:
+            scheduled_jobs[post["id"]] = job
+        
         logging.info(f"Post agendado para {post['time']}: '{post['text'][:50]}...'")
         return True
     except Exception as e:
@@ -409,6 +425,9 @@ def approve_posts():
         input("\nPressione ENTER para continuar...")
         return
     
+    timeout_count = 0
+    max_consecutive_timeouts = 3  # Número máximo de timeouts consecutivos permitidos
+    
     for i, post_str in enumerate(post_list):
         print(f"\n{post_str}")
         
@@ -431,7 +450,17 @@ def approve_posts():
         
         if action is None:
             print("Timeout! Pulando para a próxima postagem.")
+            timeout_count += 1
+            
+            # Sai do loop após muitos timeouts consecutivos
+            if timeout_count >= max_consecutive_timeouts:
+                print(f"\nMuitos timeouts consecutivos ({max_consecutive_timeouts}). Encerrando processo de aprovação.")
+                break
+                
             continue
+        else:
+            # Reseta o contador de timeout se o usuário responder
+            timeout_count = 0
         
         if action == "A":
             # Aprovar
@@ -801,6 +830,17 @@ def main():
             print(f"Encontrados {len(scheduled_posts)} posts agendados para recuperação.")
             for post in scheduled_posts:
                 if post["time"] != "now" and validate_time(post["time"]):
+                    # Verifica se o horário já passou hoje
+                    time_parts = post["time"].split(":")
+                    hour = int(time_parts[0])
+                    minute = int(time_parts[1])
+                    
+                    now = datetime.now()
+                    schedule_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    
+                    if schedule_time < now:
+                        logging.info(f"Post agendado para {post['time']} já passou hoje, agendando para amanhã")
+                        
                     schedule_post_at_time(post)
             print("Agendamentos recuperados com sucesso!")
         else:
@@ -817,27 +857,3 @@ def main():
         
         # Inicia o dashboard interativo
         display_dashboard()
-        
-    except KeyboardInterrupt:
-        print("\nBot encerrado pelo usuário.")
-    except Exception as e:
-        logging.critical(f"Erro crítico: {e}")
-        print(f"\nErro crítico: {e}")
-        print("Verifique o arquivo de log para mais detalhes.")
-    finally:
-        # Garante que os recursos sejam liberados ao sair
-        global bot_running
-        bot_running = False
-        
-        # Aguarda a thread do scheduler terminar
-        if scheduler_thread and scheduler_thread.is_alive():
-            scheduler_thread.join(timeout=1)
-        
-        logging.info("Bot encerrado")
-        print("\nBot encerrado. Até a próxima!")
-
-# Necessário para processar input com timeout
-import select
-
-if __name__ == "__main__":
-    main()
