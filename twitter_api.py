@@ -252,16 +252,17 @@ def get_user_info():
             
             user_data = {
                 "id": data.id,
-                "name": data.name,
-                "username": data.username,
-                "description": data.description
+                "name": data.name if hasattr(data, "name") else "N/A",
+                "username": data.username if hasattr(data, "username") else "N/A",
+                "description": data.description if hasattr(data, "description") else "N/A"
             }
             
             # Adiciona métricas públicas se disponíveis
-            if hasattr(data, "public_metrics"):
-                user_data["followers"] = data.public_metrics["followers_count"]
-                user_data["following"] = data.public_metrics["following_count"]
-                user_data["tweets"] = data.public_metrics["tweet_count"]
+            if hasattr(data, "public_metrics") and data.public_metrics is not None:
+                metrics = data.public_metrics
+                user_data["followers"] = metrics.get("followers_count", 0)
+                user_data["following"] = metrics.get("following_count", 0)
+                user_data["tweets"] = metrics.get("tweet_count", 0)
             
             return True, user_data
         else:

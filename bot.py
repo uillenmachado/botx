@@ -816,3 +816,55 @@ def scheduler_job():
     while bot_running:
         schedule.run_pending()
         time.sleep(1)
+
+def main():
+    """
+    Função principal que inicializa e inicia o bot.
+    """
+    global trends, monthly_posts, daily_posts, scheduler_thread, bot_running
+    
+    logging.info("Iniciando o Bot para X...")
+    
+    # Inicializa a API
+    api_success, api_message = initialize_api()
+    logging.info(f"Inicialização da API: {api_message}")
+    
+    if not api_success:
+        logging.error("Falha ao inicializar a API. Verifique suas credenciais.")
+        return
+    
+    # Carrega contadores de posts
+    monthly_posts, daily_posts = load_post_counts()
+    
+    # Busca tendências iniciais
+    update_trends()
+    
+    # Recupera agendamentos existentes
+    scheduled_posts = get_scheduled_posts_for_recovery()
+    if scheduled_posts:
+        logging.info(f"Recuperando {len(scheduled_posts)} agendamentos...")
+        for post in scheduled_posts:
+            schedule_post_at_time(post)
+    
+    # Inicia a thread do scheduler
+    scheduler_thread = threading.Thread(target=scheduler_job)
+    scheduler_thread.daemon = True
+    scheduler_thread.start()
+    
+    try:
+        # Inicia o dashboard
+        display_dashboard()
+    except KeyboardInterrupt:
+        logging.info("Bot interrompido pelo usuário.")
+    except Exception as e:
+        logging.error(f"Erro inesperado: {e}")
+    finally:
+        # Encerra o bot graciosamente
+        bot_running = False
+        if scheduler_thread and scheduler_thread.is_alive():
+            scheduler_thread.join(timeout=1)
+        logging.info("Bot encerrado.")
+
+# Ponto de entrada para o script
+if __name__ == "__main__":
+    main()
