@@ -1,3 +1,4 @@
+# post_manager.py
 """
 Gerenciador de Postagens para Bot do X (Twitter)
 
@@ -5,8 +6,7 @@ Este módulo contém funções para gerenciar todas as operações relacionadas
 às postagens, incluindo a criação, aprovação, agendamento e listagem de posts.
 Também gerencia a persistência dos dados em arquivo JSON.
 
-Autor: Uillen Machado
-Repositório: github.com/uillenmachado/botx
+Versão modificada para debug adicional.
 """
 
 import json
@@ -22,118 +22,108 @@ from config import (
     DATE_FORMAT, TIME_PATTERN
 )
 
-# Estrutura básica do arquivo de posts
 DEFAULT_POSTS_DATA = {
-    "pending": [],    # Posts criados mas não aprovados
-    "approved": [],   # Posts aprovados mas não agendados
-    "scheduled": [],  # Posts aprovados e agendados
-    "history": []     # Histórico de posts publicados
+    "pending": [],
+    "approved": [],
+    "scheduled": [],
+    "history": []
 }
 
-# Lock para operações de arquivo para evitar condições de corrida
 file_lock = threading.Lock()
 
 def load_posts():
     """
     Carrega as postagens do arquivo posts.json ou inicializa um novo arquivo.
     Em caso de erro ao ler o arquivo, cria um novo com a estrutura padrão.
-    
-    Returns:
-        dict: Dicionário com as listas de posts pendentes, aprovados e agendados.
     """
+    logging.info("DEBUG -> load_posts() chamado.")
     with file_lock:
         try:
-            if os.path.exists(POSTS_FILE):
-                # Verificação adicional do tamanho do arquivo para prevenir falhas
-                if os.path.getsize(POSTS_FILE) == 0:
-                    logging.error(f"Arquivo {POSTS_FILE} está vazio. Criando nova estrutura.")
-                    return DEFAULT_POSTS_DATA.copy()
-                    
-                with open(POSTS_FILE, "r", encoding="utf-8") as f:
-                    try:
-                        file_content = f.read()
-                        if not file_content.strip():
-                            logging.error(f"Arquivo {POSTS_FILE} está vazio. Criando nova estrutura.")
-                            return DEFAULT_POSTS_DATA.copy()
-                        
-                        posts_data = json.loads(file_content)
-                        
-                        # Verifica se o arquivo tem a estrutura correta
-                        required_keys = ["pending", "approved", "scheduled", "history"]
-                        missing_keys = [key for key in required_keys if key not in posts_data]
-                        
-                        if missing_keys:
-                            logging.warning(f"Estrutura incorreta no arquivo posts.json. Chaves ausentes: {missing_keys}")
-                            for key in missing_keys:
-                                posts_data[key] = []
-                        
-                        # Verifica se as chaves são listas
-                        for key in required_keys:
-                            if not isinstance(posts_data.get(key, []), list):
-                                logging.warning(f"A chave '{key}' em posts.json não é uma lista. Corrigindo...")
-                                posts_data[key] = []
-                        
-                        # Verifica e adiciona IDs para posts que não possuem
-                        for status in required_keys:
-                            for post in posts_data[status]:
-                                if "id" not in post:
-                                    logging.warning(f"Post sem ID encontrado em {status}. Adicionando ID.")
-                                    post["id"] = str(uuid.uuid4())
-                        
-                        # Retorna os dados carregados
-                        return posts_data
-                        
-                    except (json.JSONDecodeError, ValueError) as e:
-                        logging.error(f"Erro ao decodificar {POSTS_FILE}: {e}. Criando backup e novo arquivo.")
-                        
-                        # Tenta criar um backup do arquivo corrompido
-                        try:
-                            backup_file = f"{POSTS_FILE}.corrupted.{int(time.time())}"
-                            with open(POSTS_FILE, "r", encoding="utf-8") as source:
-                                with open(backup_file, "w", encoding="utf-8") as target:
-                                    target.write(source.read())
-                            logging.info(f"Backup do arquivo corrompido criado em {backup_file}")
-                        except Exception as backup_err:
-                            logging.error(f"Erro ao criar backup do arquivo corrompido: {backup_err}")
-                        
-                        return DEFAULT_POSTS_DATA.copy()
-            else:
-                # Arquivo não existe, cria um novo com a estrutura padrão
+            if not os.path.exists(POSTS_FILE):
+                # Arquivo não existe: cria um vazio
+                logging.info(f"DEBUG -> {POSTS_FILE} não existe. Criando arquivo novo.")
                 posts_data = DEFAULT_POSTS_DATA.copy()
                 save_posts(posts_data)
-                logging.info(f"Arquivo {POSTS_FILE} criado.")
                 return posts_data
+
+            # Se existe, checar tamanho
+            size = os.path.getsize(POSTS_FILE)
+            logging.info(f"DEBUG -> {POSTS_FILE} existe, tamanho = {size} bytes.")
+            if size == 0:
+                logging.warning(f"Arquivo {POSTS_FILE} está vazio. Criando nova estrutura.")
+                return DEFAULT_POSTS_DATA.copy()
+            
+            with open(POSTS_FILE, "r", encoding="utf-8") as f:
+                file_content = f.read()
+                logging.info(f"DEBUG -> Conteúdo lido de {POSTS_FILE} (len={len(file_content)}). Iniciando json.loads.")
                 
+                if not file_content.strip():
+                    logging.warning(f"Arquivo {POSTS_FILE} está vazio após leitura.")
+                    return DEFAULT_POSTS_DATA.copy()
+                
+                try:
+                    posts_data = json.loads(file_content)
+                    logging.info("DEBUG -> JSON decodificado com sucesso.")
+                except (json.JSONDecodeError, ValueError) as e:
+                    logging.error(f"Erro ao decodificar {POSTS_FILE}: {e}. Criando backup e novo arquivo.")
+                    # Cria backup
+                    try:
+                        backup_file = f"{POSTS_FILE}.corrupted.{int(time.time())}"
+                        with open(backup_file, "w", encoding="utf-8") as target:
+                            target.write(file_content)
+                        logging.info(f"Backup do arquivo corrompido criado em {backup_file}")
+                    except Exception as backup_err:
+                        logging.error(f"Erro ao criar backup do arquivo corrompido: {backup_err}")
+                    
+                    posts_data = DEFAULT_POSTS_DATA.copy()
+                    save_posts(posts_data)
+                    return posts_data
+                
+                required_keys = ["pending", "approved", "scheduled", "history"]
+                missing_keys = [key for key in required_keys if key not in posts_data]
+                if missing_keys:
+                    logging.warning(f"Estrutura incorreta em {POSTS_FILE}. Faltam: {missing_keys}")
+                    for mk in missing_keys:
+                        posts_data[mk] = []
+
+                # Garante que cada chave seja lista
+                for key in required_keys:
+                    if not isinstance(posts_data.get(key, []), list):
+                        logging.warning(f"A chave '{key}' não é lista. Corrigindo para [].")
+                        posts_data[key] = []
+                
+                # Verifica IDs
+                for status in required_keys:
+                    for post in posts_data[status]:
+                        if "id" not in post:
+                            logging.warning(f"Post sem ID em {status}. Adicionando ID.")
+                            post["id"] = str(uuid.uuid4())
+                
+                logging.info("DEBUG -> load_posts() finalizado com sucesso.")
+                return posts_data
+        
         except Exception as e:
-            logging.error(f"Erro ao carregar posts: {e}")
+            logging.error(f"Erro inesperado em load_posts(): {e}")
             return DEFAULT_POSTS_DATA.copy()
 
 def save_posts(posts_data):
     """
     Salva as postagens no arquivo posts.json.
     Inclui tratamento de erros para garantir que os dados não sejam perdidos.
-    
-    Args:
-        posts_data (dict): Dicionário com as listas de posts.
-        
-    Returns:
-        bool: True se o arquivo foi salvo com sucesso, False caso contrário.
     """
+    logging.info("DEBUG -> save_posts() chamado.")
     with file_lock:
         try:
-            # Verificação adicional da estrutura antes de salvar
             if not isinstance(posts_data, dict):
-                logging.error(f"Erro ao salvar posts: a estrutura não é um dicionário")
+                logging.error("Estrutura inválida: posts_data não é um dicionário.")
                 return False
-                
+            
             required_keys = ["pending", "approved", "scheduled", "history"]
             for key in required_keys:
-                if key not in posts_data:
-                    posts_data[key] = []
-                elif not isinstance(posts_data[key], list):
+                if key not in posts_data or not isinstance(posts_data[key], list):
+                    logging.warning(f"Corrigindo chave {key} para lista vazia.")
                     posts_data[key] = []
             
-            # Verifica e adiciona IDs para qualquer post que não tenha
             for status in required_keys:
                 for post in posts_data[status]:
                     if "id" not in post:
@@ -141,490 +131,281 @@ def save_posts(posts_data):
             
             with open(POSTS_FILE, "w", encoding="utf-8") as f:
                 json.dump(posts_data, f, indent=4, ensure_ascii=False)
+            
+            logging.info("DEBUG -> save_posts() concluiu gravação com sucesso.")
             return True
-            
+        
         except Exception as e:
-            logging.error(f"Erro ao salvar posts: {e}")
-            
-            # Tenta salvar em um arquivo alternativo em caso de erro
+            logging.error(f"Erro em save_posts(): {e}")
+            # Tenta salvar backup
             try:
                 backup_file = f"{POSTS_FILE}.backup.{int(time.time())}.json"
                 with open(backup_file, "w", encoding="utf-8") as f:
                     json.dump(posts_data, f, indent=4, ensure_ascii=False)
-                logging.info(f"Backup dos posts salvo em {backup_file}")
+                logging.info(f"Backup salvo em {backup_file}")
                 
-                # Tenta restaurar o arquivo principal a partir do backup
+                # Tenta restaurar
                 try:
                     with open(backup_file, "r", encoding="utf-8") as f_in:
                         with open(POSTS_FILE, "w", encoding="utf-8") as f_out:
                             f_out.write(f_in.read())
-                    logging.info(f"Arquivo principal restaurado a partir do backup")
+                    logging.info("Arquivo principal restaurado do backup com sucesso.")
                     return True
                 except Exception as restore_err:
                     logging.critical(f"Falha ao restaurar arquivo principal: {restore_err}")
                     return False
             except Exception as backup_err:
-                logging.critical(f"Falha ao criar backup dos posts: {backup_err}")
+                logging.critical(f"Falha ao criar backup: {backup_err}")
                 return False
 
 def validate_time(time_str):
-    """
-    Valida se o horário está no formato correto (HH:MM).
-    Aceita qualquer horário válido entre 00:00 e 23:59.
-    
-    Args:
-        time_str (str): Horário no formato HH:MM ou "now".
-        
-    Returns:
-        bool: True se o horário é válido, False caso contrário.
-    """
-    try:
-        # Caso especial para postagem imediata
-        if time_str.lower() == "now":
-            return True
-        
-        # Verifica o formato usando expressão regular (HH:MM)
-        if not TIME_PATTERN.match(time_str):
-            return False
-        
+    if time_str.lower() == "now":
         return True
-            
-    except (ValueError, AttributeError):
-        return False
+    return bool(TIME_PATTERN.match(time_str))
 
 def sanitize_text(text):
-    """
-    Sanitiza o texto da postagem para evitar problemas com caracteres especiais.
-    
-    Args:
-        text (str): Texto original da postagem.
-        
-    Returns:
-        str: Texto sanitizado.
-    """
     if not isinstance(text, str):
         return ""
-        
-    # Remove caracteres de controle e normaliza espaços em branco
     sanitized = ' '.join(text.strip().split())
-    
-    # Limita ao tamanho máximo permitido
     if len(sanitized) > MAX_TWEET_LENGTH:
         sanitized = sanitized[:MAX_TWEET_LENGTH]
-        
     return sanitized
 
 def create_post(text, time="now", posts_data=None):
-    """
-    Cria uma nova postagem e a adiciona à lista de pendentes.
-    
-    Args:
-        text (str): Texto da postagem.
-        time (str, optional): Horário para postagem (HH:MM) ou "now" para postar assim
-                              que aprovado. Padrão é "now".
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        tuple: (bool, str) - Sucesso (True/False) e mensagem explicativa.
-    """
-    # Sanitização e validação do texto
     text = sanitize_text(text)
-    
     if not text:
         return False, "O texto da postagem não pode estar vazio."
-    
-    if len(text) > MAX_TWEET_LENGTH:
-        return False, f"O texto excede o limite de {MAX_TWEET_LENGTH} caracteres. Atual: {len(text)}"
-    
-    # Validação do horário
     if not validate_time(time):
-        return False, f"Formato de horário inválido. Use o formato HH:MM ou 'now'."
+        return False, "Formato de horário inválido."
     
-    # Carrega os posts se não foram fornecidos
     if posts_data is None:
+        logging.info("DEBUG -> create_post() vai chamar load_posts().")
         posts_data = load_posts()
     
-    # Cria o post com metadados e ID único
     post = {
-        "id": str(uuid.uuid4()),  # Adiciona um ID único
+        "id": str(uuid.uuid4()),
         "text": text,
         "time": time,
         "status": "pending",
         "created_at": datetime.now().isoformat()
     }
-    
-    # Adiciona à lista de pendentes
     posts_data["pending"].append(post)
     
-    # Salva as alterações
     if save_posts(posts_data):
-        return True, f"Postagem criada e adicionada à lista de pendentes: '{text[:30]}{'...' if len(text) > 30 else ''}' às {time}"
-    else:
-        return False, "Erro ao salvar a postagem. Verifique o log para mais detalhes."
+        return True, f"Postagem criada pendente: '{text[:30]}'"
+    return False, "Erro ao salvar a postagem."
 
 def edit_post(post_index, new_text=None, new_time=None, status="pending", posts_data=None):
-    """
-    Edita uma postagem existente.
-    
-    Args:
-        post_index (int): Índice da postagem na lista.
-        new_text (str, optional): Novo texto para a postagem.
-        new_time (str, optional): Novo horário para a postagem.
-        status (str, optional): Status da postagem a ser editada 
-                               ("pending", "approved", "scheduled").
-        posts_data (dict, optional): Dicionário com as listas de posts.
-    
-    Returns:
-        tuple: (bool, str) - Sucesso (True/False) e mensagem explicativa.
-    """
-    # Carrega os posts se não foram fornecidos
     if posts_data is None:
+        logging.info("DEBUG -> edit_post() vai chamar load_posts().")
         posts_data = load_posts()
     
-    # Verifica se o status é válido
     if status not in ["pending", "approved", "scheduled"]:
         return False, "Status inválido."
     
-    # Verifica se o índice é válido
     if post_index < 0 or post_index >= len(posts_data[status]):
-        return False, f"Índice {post_index} de postagem inválido para status '{status}'."
+        return False, f"Índice {post_index} inválido para status '{status}'."
     
-    # Obtém o post
     post = posts_data[status][post_index]
     
-    # Atualiza o texto se fornecido
     if new_text is not None:
         new_text = sanitize_text(new_text)
         if not new_text:
-            return False, "O texto da postagem não pode estar vazio."
-        if len(new_text) > MAX_TWEET_LENGTH:
-            return False, f"O texto excede o limite de {MAX_TWEET_LENGTH} caracteres."
+            return False, "O texto não pode ficar vazio."
         post["text"] = new_text
         post["edited_at"] = datetime.now().isoformat()
     
-    # Atualiza o horário se fornecido
     if new_time is not None:
         if not validate_time(new_time):
-            return False, f"Formato de horário inválido. Use o formato HH:MM ou 'now'."
+            return False, "Formato de horário inválido."
         post["time"] = new_time
         post["edited_at"] = datetime.now().isoformat()
     
-    # Salva as alterações
     if save_posts(posts_data):
-        return True, f"Postagem {post_index+1} editada com sucesso."
-    else:
-        return False, "Erro ao salvar as alterações. Verifique o log para mais detalhes."
+        return True, f"Postagem {post_index+1} editada."
+    return False, "Erro ao salvar alterações."
 
 def delete_post(post_index, status="pending", posts_data=None):
-    """
-    Exclui uma postagem.
-    
-    Args:
-        post_index (int): Índice da postagem na lista.
-        status (str, optional): Status da postagem a ser excluída 
-                               ("pending", "approved", "scheduled").
-        posts_data (dict, optional): Dicionário com as listas de posts.
-    
-    Returns:
-        tuple: (bool, str) - Sucesso (True/False) e mensagem explicativa.
-    """
-    # Carrega os posts se não foram fornecidos
     if posts_data is None:
+        logging.info("DEBUG -> delete_post() vai chamar load_posts().")
         posts_data = load_posts()
     
-    # Verifica se o status é válido
     if status not in ["pending", "approved", "scheduled"]:
         return False, "Status inválido."
-    
-    # Verifica se o índice é válido
     if post_index < 0 or post_index >= len(posts_data[status]):
-        return False, f"Índice {post_index} de postagem inválido para status '{status}'."
+        return False, f"Índice {post_index} inválido para status '{status}'."
     
-    # Remove o post
-    removed_post = posts_data[status].pop(post_index)
-    
-    # Salva as alterações
+    removed = posts_data[status].pop(post_index)
     if save_posts(posts_data):
-        return True, f"Postagem removida com sucesso: '{removed_post['text'][:30]}{'...' if len(removed_post['text']) > 30 else ''}'."
-    else:
-        return False, "Erro ao salvar as alterações após exclusão. Verifique o log para mais detalhes."
+        return True, f"Postagem removida: '{removed['text'][:30]}'"
+    return False, "Erro ao salvar após exclusão."
 
 def approve_post(post_index, approve=True, new_time=None, posts_data=None):
-    """
-    Aprova ou rejeita uma postagem pendente.
-    
-    Args:
-        post_index (int): Índice da postagem na lista de pendentes.
-        approve (bool, optional): True para aprovar, False para rejeitar. Padrão é True.
-        new_time (str, optional): Novo horário para postagem, se diferente do original.
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        tuple: (bool, str, dict) - Sucesso (True/False), mensagem explicativa e post afetado (ou None).
-    """
-    # Carrega os posts se não foram fornecidos
     if posts_data is None:
+        logging.info("DEBUG -> approve_post() vai chamar load_posts().")
         posts_data = load_posts()
     
-    # Verifica se o índice é válido
     if post_index < 0 or post_index >= len(posts_data["pending"]):
-        return False, "Índice de postagem inválido.", None
+        return False, "Índice inválido em pending.", None
     
-    # Obtém o post
     post = posts_data["pending"][post_index]
     
-    # Se rejeitado, simplesmente remove da lista de pendentes
     if not approve:
         posts_data["pending"].pop(post_index)
         save_posts(posts_data)
-        return True, "Postagem rejeitada e removida da lista.", None
+        return True, "Postagem rejeitada.", None
     
-    # Se aprovado, atualiza o horário se fornecido
     if new_time is not None:
         if not validate_time(new_time):
-            return False, f"Formato de horário inválido. Use o formato HH:MM ou 'now'.", None
+            return False, "Horário inválido.", None
         post["time"] = new_time
     
-    # Atualiza status e timestamp
     post["status"] = "approved"
     post["approved_at"] = datetime.now().isoformat()
-    
-    # Move para a lista de aprovados
     posts_data["approved"].append(post)
     posts_data["pending"].pop(post_index)
     
-    # Salva as alterações
     if save_posts(posts_data):
-        return True, f"Postagem aprovada: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}' para {post['time']}", post
-    else:
-        return False, "Erro ao salvar as alterações após aprovação. Verifique o log para mais detalhes.", None
+        return True, f"Postagem aprovada: '{post['text'][:30]}'", post
+    return False, "Erro ao salvar aprovação.", None
 
 def schedule_post(post_index, scheduled=True, posts_data=None):
-    """
-    Marca uma postagem aprovada como agendada.
-    
-    Args:
-        post_index (int): Índice da postagem na lista de aprovados.
-        scheduled (bool, optional): True para agendar, False para desagendar. Padrão é True.
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        tuple: (bool, str, dict) - Sucesso (True/False), mensagem explicativa e post afetado (ou None).
-    """
-    # Carrega os posts se não foram fornecidos
     if posts_data is None:
+        logging.info("DEBUG -> schedule_post() vai chamar load_posts().")
         posts_data = load_posts()
     
-    # Verifica se o índice é válido
     if post_index < 0 or post_index >= len(posts_data["approved"]):
-        return False, "Índice de postagem inválido.", None
+        return False, "Índice inválido em approved.", None
     
-    # Obtém o post
     post = posts_data["approved"][post_index]
-    
-    # Verifica se o horário é válido para agendamento
     if post["time"].lower() == "now":
-        return False, "Não é possível agendar uma postagem com horário 'now'.", None
+        return False, "Não é possível agendar horário 'now'.", None
     
-    # Verificar se já não está agendado (usando ID único)
-    post_id = post.get("id", None)
+    post_id = post.get("id")
     if scheduled and post_id:
-        # Verifica se já existe um post agendado com o mesmo ID
-        for scheduled_post in posts_data["scheduled"]:
-            if scheduled_post.get("id", None) == post_id:
-                return False, f"Esta postagem já está agendada para {scheduled_post['time']}.", None
+        for sp in posts_data["scheduled"]:
+            if sp.get("id") == post_id:
+                return False, "Já está agendado.", None
     
-    # Atualiza status e timestamp
     post["status"] = "scheduled" if scheduled else "approved"
-    post["scheduled_at"] = datetime.now().isoformat() if scheduled else None
-    
-    # Move para a lista apropriada
     if scheduled:
-        posts_data["scheduled"].append(post.copy())  # Usa .copy() para evitar problemas de referência
+        post["scheduled_at"] = datetime.now().isoformat()
+        posts_data["scheduled"].append(post.copy())
         posts_data["approved"].pop(post_index)
-        message = f"Postagem agendada: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}' para {post['time']}"
+        msg = f"Postagem agendada: '{post['text'][:30]}'"
     else:
-        posts_data["approved"].append(post.copy())  # Usa .copy() para evitar problemas de referência
-        # Encontra e remove da lista de agendados usando o ID único
+        post["scheduled_at"] = None
+        posts_data["approved"].append(post.copy())
+        # remove da lista scheduled
         for i, p in enumerate(posts_data["scheduled"]):
-            if p.get("id", None) == post_id:
+            if p.get("id") == post_id:
                 posts_data["scheduled"].pop(i)
                 break
-        message = f"Agendamento removido: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}'"
+        msg = f"Agendamento removido: '{post['text'][:30]}'"
     
-    # Salva as alterações
     if save_posts(posts_data):
-        return True, message, post
-    else:
-        return False, "Erro ao salvar as alterações após agendamento. Verifique o log para mais detalhes.", None
+        return True, msg, post
+    return False, "Erro ao salvar agendamento.", None
 
 def mark_as_posted(post, posts_data=None):
-    """
-    Marca uma postagem como publicada e a remove da lista de agendados.
-    
-    Args:
-        post (dict): Postagem a ser marcada como publicada.
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        bool: True se a operação foi bem-sucedida, False caso contrário.
-    """
-    # Carrega os posts se não foram fornecidos
     if posts_data is None:
+        logging.info("DEBUG -> mark_as_posted() vai chamar load_posts().")
         posts_data = load_posts()
     
-    # Adiciona timestamp de publicação
     post["posted_at"] = datetime.now().isoformat()
     post["status"] = "posted"
+    posts_data["history"].append(post.copy())
     
-    # Adiciona ao histórico
-    posts_data["history"].append(post.copy())  # Usa .copy() para evitar problemas de referência
+    pid = post.get("id")
+    if pid:
+        posts_data["scheduled"] = [p for p in posts_data["scheduled"] if p.get("id") != pid]
+        posts_data["approved"] = [p for p in posts_data["approved"] if p.get("id") != pid]
     
-    # Remove da lista de agendados se estiver lá, usando o ID único
-    post_id = post.get("id", None)
-    if post_id:
-        posts_data["scheduled"] = [p for p in posts_data["scheduled"] 
-                                if p.get("id", None) != post_id]
-        
-        # Também remove da lista de aprovados por segurança
-        posts_data["approved"] = [p for p in posts_data["approved"]
-                                if p.get("id", None) != post_id]
-    
-    # Salva as alterações
     return save_posts(posts_data)
 
 def get_scheduled_posts_for_recovery(posts_data=None):
-    """
-    Retorna a lista de posts agendados para recuperação de agendamentos.
-    Útil para recriar agendamentos após reiniciar o bot.
-    
-    Args:
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        list: Lista de posts agendados.
-    """
-    # Carrega os posts se não foram fornecidos
     if posts_data is None:
+        logging.info("DEBUG -> get_scheduled_posts_for_recovery() chamando load_posts().")
         posts_data = load_posts()
-        
-    # Faz uma cópia profunda de cada post para evitar problemas de referência
     return [post.copy() for post in posts_data["scheduled"]]
 
 def get_post_by_id(post_id, status=None, posts_data=None):
-    """
-    Encontra um post pelo ID em uma ou todas as listas.
-    
-    Args:
-        post_id (str): ID do post a ser encontrado.
-        status (str, optional): Status em que procurar ("pending", "approved", 
-                               "scheduled", "history") ou None para procurar em todos.
-        posts_data (dict, optional): Dicionário com as listas de posts.
-    
-    Returns:
-        tuple: (dict, str, int) - Post encontrado, status e índice, ou (None, None, -1) se não encontrado.
-    """
-    # Carrega os posts se não foram fornecidos
     if posts_data is None:
+        logging.info("DEBUG -> get_post_by_id() chama load_posts().")
         posts_data = load_posts()
     
-    # Se status for fornecido, procura apenas nesse status
-    if status:
-        if status in posts_data:
-            for i, post in enumerate(posts_data[status]):
-                if post.get("id") == post_id:
-                    return post, status, i
+    if status and status in posts_data:
+        for i, p in enumerate(posts_data[status]):
+            if p.get("id") == post_id:
+                return p, status, i
         return None, None, -1
     
-    # Se status não for fornecido, procura em todos
-    for status_key in ["pending", "approved", "scheduled", "history"]:
-        for i, post in enumerate(posts_data[status_key]):
-            if post.get("id") == post_id:
-                return post, status_key, i
-    
+    for s in ["pending", "approved", "scheduled", "history"]:
+        for i, p in enumerate(posts_data[s]):
+            if p.get("id") == post_id:
+                return p, s, i
     return None, None, -1
 
 def get_post_list(status="all", posts_data=None):
-    """
-    Retorna uma lista formatada de postagens de acordo com o status.
-    
-    Args:
-        status (str, optional): Status das postagens ("pending", "approved", 
-                               "scheduled", "history" ou "all"). Padrão é "all".
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        list: Lista de strings formatadas com as informações das postagens.
-    """
-    # Carrega os posts se não foram fornecidos
     if posts_data is None:
+        logging.info("DEBUG -> get_post_list() chamando load_posts().")
         posts_data = load_posts()
     
     result = []
+    def fmt_text(t):
+        return f"'{t[:50]}{'...' if len(t)>50 else ''}'"
     
     if status == "all" or status == "pending":
         for i, post in enumerate(posts_data["pending"]):
-            created_at = datetime.fromisoformat(post["created_at"]).strftime(DATE_FORMAT) if "created_at" in post else "N/A"
-            post_id = post.get("id", "N/A")[:8]  # Exibe apenas os primeiros 8 caracteres do ID
-            result.append(f"Pendente #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Criado em: {created_at}")
+            ctime = post.get("created_at","N/A")
+            try:
+                ctime = datetime.fromisoformat(ctime).strftime(DATE_FORMAT)
+            except:
+                pass
+            pid = post.get("id","N/A")[:8]
+            result.append(f"Pendente #{i+1} [ID:{pid}]: {fmt_text(post['text'])} | Horário:{post['time']} | Criado:{ctime}")
     
     if status == "all" or status == "approved":
         for i, post in enumerate(posts_data["approved"]):
-            approved_at = datetime.fromisoformat(post["approved_at"]).strftime(DATE_FORMAT) if "approved_at" in post else "N/A"
-            post_id = post.get("id", "N/A")[:8]
-            result.append(f"Aprovado #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Aprovado em: {approved_at}")
+            atime = post.get("approved_at","N/A")
+            try:
+                atime = datetime.fromisoformat(atime).strftime(DATE_FORMAT)
+            except:
+                pass
+            pid = post.get("id","N/A")[:8]
+            result.append(f"Aprovado #{i+1} [ID:{pid}]: {fmt_text(post['text'])} | Horário:{post['time']} | Aprovado:{atime}")
     
     if status == "all" or status == "scheduled":
         for i, post in enumerate(posts_data["scheduled"]):
-            scheduled_at = datetime.fromisoformat(post["scheduled_at"]).strftime(DATE_FORMAT) if "scheduled_at" in post else "N/A"
-            post_id = post.get("id", "N/A")[:8]
-            result.append(f"Agendado #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Agendado em: {scheduled_at}")
+            stime = post.get("scheduled_at","N/A")
+            try:
+                stime = datetime.fromisoformat(stime).strftime(DATE_FORMAT)
+            except:
+                pass
+            pid = post.get("id","N/A")[:8]
+            result.append(f"Agendado #{i+1} [ID:{pid}]: {fmt_text(post['text'])} | Horário:{post['time']} | Agendado:{stime}")
     
     if status == "all" or status == "history":
         for i, post in enumerate(posts_data["history"]):
-            posted_at = datetime.fromisoformat(post["posted_at"]).strftime(DATE_FORMAT) if "posted_at" in post else "N/A"
-            post_id = post.get("id", "N/A")[:8]
-            result.append(f"Publicado #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Publicado em: {posted_at}")
+            ptime = post.get("posted_at","N/A")
+            try:
+                ptime = datetime.fromisoformat(ptime).strftime(DATE_FORMAT)
+            except:
+                pass
+            pid = post.get("id","N/A")[:8]
+            result.append(f"Publicado #{i+1} [ID:{pid}]: {fmt_text(post['text'])} | Horário:{post['time']} | Publicado:{ptime}")
     
     return result
 
 def get_pending_now_posts(posts_data=None):
-    """
-    Retorna uma lista de posts aprovados com horário "now" para publicação imediata.
-    
-    Args:
-        posts_data (dict, optional): Dicionário com as listas de posts.
-    
-    Returns:
-        list: Lista de posts aprovados com horário "now".
-    """
-    # Carrega os posts se não foram fornecidos
     if posts_data is None:
+        logging.info("DEBUG -> get_pending_now_posts() chamando load_posts().")
         posts_data = load_posts()
-    
-    # Retorna cópias dos posts para evitar problemas de referência
-    return [post.copy() for post in posts_data["approved"] 
-            if post.get("time", "").lower() == "now"]
+    return [p.copy() for p in posts_data["approved"] if p.get("time","").lower() == "now"]
 
 def get_stats(posts_data=None):
-    """
-    Retorna estatísticas sobre as postagens.
-    
-    Args:
-        posts_data (dict, optional): Dicionário com as listas de posts.
-                                    Se None, carrega do arquivo.
-    
-    Returns:
-        dict: Dicionário com as estatísticas.
-    """
-    # Carrega os posts se não foram fornecidos
     if posts_data is None:
+        logging.info("DEBUG -> get_stats() chamando load_posts().")
         posts_data = load_posts()
     
     stats = {
@@ -632,14 +413,10 @@ def get_stats(posts_data=None):
         "total_approved": len(posts_data["approved"]),
         "total_scheduled": len(posts_data["scheduled"]),
         "total_posted": len(posts_data["history"]),
-        "total_all": len(posts_data["pending"]) + len(posts_data["approved"]) + 
-                     len(posts_data["scheduled"]) + len(posts_data["history"])
+        "total_all": sum(len(posts_data[s]) for s in ["pending","approved","scheduled","history"])
     }
-    
-    # Estatísticas por dia (posts publicados)
     today = datetime.now().date()
     posts_today = 0
-    
     for post in posts_data["history"]:
         if "posted_at" in post:
             try:
@@ -647,8 +424,6 @@ def get_stats(posts_data=None):
                 if posted_date == today:
                     posts_today += 1
             except (ValueError, TypeError):
-                logging.warning(f"Formato de data inválido para post: {post.get('id', 'N/A')}")
-    
+                logging.warning(f"Data inválida no post ID:{post.get('id','')}")
     stats["posts_today"] = posts_today
-    
     return stats

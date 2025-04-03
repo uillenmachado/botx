@@ -14,10 +14,18 @@ Repositório: github.com/uillenmachado/botx
 import os
 import logging
 import re
-from dotenv import load_dotenv # type: ignore
+import sys
 
 # Configuração de log para o carregamento de variáveis de ambiente
 logger = logging.getLogger(__name__)
+
+# Verifica se python-dotenv está instalado
+try:
+    from dotenv import load_dotenv # type: ignore
+except ImportError:
+    print("ERRO: O pacote 'python-dotenv' não está instalado.")
+    print("Execute 'pip install python-dotenv' para instalar.")
+    sys.exit(1)
 
 # Carrega as variáveis de ambiente do arquivo .env
 # Adicionando tratamento de erro e verificação de formato
