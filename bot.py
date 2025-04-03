@@ -12,10 +12,10 @@ import logging
 import time
 import os
 import sys
-import schedule
+import schedule # type: ignore
 import threading
 import select
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from config import (
     POST_INTERVAL_MINUTES, LOG_FILE,
@@ -175,6 +175,15 @@ def reset_monthly_count():
     global monthly_posts
     monthly_posts = 0
     logging.info("Contador mensal de posts resetado")
+
+def check_month_reset():
+    """
+    Verifica se é o primeiro dia do mês nas primeiras horas para resetar o contador mensal.
+    Esta função é chamada regularmente pelo scheduler.
+    """
+    current_date = datetime.now()
+    if current_date.day == 1 and current_date.hour == 0 and current_date.minute < 5:
+        reset_monthly_count()
 
 def post_scheduled_tweet(post):
     """
@@ -338,7 +347,11 @@ def list_posts():
             input("\nPressione ENTER para continuar...")
         else:
             print("Opção inválida!")
-            time.sleep(1)
+            print("Aguarde...")
+            for i in range(1): # Substituído time.sleep
+                print(".", end="", flush=True)
+                time.sleep(0.2)
+            print()
 
 def edit_existing_post(status):
     """
@@ -483,20 +496,19 @@ def approve_posts():
                                 monthly_posts += 1  # Incrementa contadores somente após sucesso
                                 daily_posts += 1
                                 
-                                # Remove da lista de aprovados e adiciona ao histórico
+                                # Remove da lista de aprovados e adiciona ao histórico usando ID único
                                 posts_data = load_posts()
-                                # Usa ID único para localizar o post corretamente
                                 post_id = post.get("id")
                                 if post_id:
-                                    for idx, p in enumerate(posts_data["approved"]):
-                                        if p.get("id") == post_id:
-                                            posts_data["approved"].pop(idx)
-                                            break
+                                    posts_data["approved"] = [p for p in posts_data["approved"] 
+                                                             if p.get("id") != post_id]
                                     
                                     post["posted_at"] = datetime.now().isoformat()
                                     post["status"] = "posted"
                                     posts_data["history"].append(post)
                                     save_posts(posts_data)
+                                else:
+                                    logging.warning(f"Post sem ID encontrado ao tentar postar: {post['text'][:30]}...")
                             else:
                                 print(f"Erro ao publicar! {message}")
                         else:
@@ -610,12 +622,18 @@ def schedule_approved_posts():
                     monthly_posts += 1  # Incrementa contadores somente após sucesso
                     daily_posts += 1
                     
-                    # Remove da lista de aprovados e adiciona ao histórico
-                    post["posted_at"] = datetime.now().isoformat()
-                    post["status"] = "posted"
-                    posts_data["history"].append(post)
-                    posts_data["approved"].pop(i)
-                    save_posts(posts_data)
+                    # Remove da lista de aprovados e adiciona ao histórico usando ID
+                    post_id = post.get("id")
+                    if post_id:
+                        posts_data["approved"] = [p for p in posts_data["approved"] 
+                                                if p.get("id") != post_id]
+                        
+                        post["posted_at"] = datetime.now().isoformat()
+                        post["status"] = "posted"
+                        posts_data["history"].append(post)
+                        save_posts(posts_data)
+                    else:
+                        logging.warning(f"Post sem ID encontrado ao tentar postar: {post['text'][:30]}...")
                 else:
                     print(f"Erro ao publicar! {message}")
             else:
@@ -628,6 +646,53 @@ def schedule_approved_posts():
     
     print("\nProcesso de agendamento concluído.")
     input("\nPressione ENTER para voltar ao menu principal...")
+
+def process_pending_now_posts():
+    """
+    Processa posts aprovados com horário "now" para publicação imediata.
+    Executado a cada 5 minutos pelo scheduler.
+    """
+    if not can_post_today() or not can_post_this_month():
+        logging.warning("Não é possível processar posts 'now' devido aos limites da API")
+        return
+    
+    posts_data = load_posts()
+    now_posts = [p for p in posts_data["approved"] if p["time"] == "now"]
+    
+    if not now_posts:
+        return
+    
+    logging.info(f"Processando {len(now_posts)} posts com horário 'now'")
+    
+    for post in now_posts:
+        logging.info(f"Publicando post imediato: '{post['text'][:50]}...'")
+        
+        success, message, tweet_data = post_tweet(post["text"])
+        
+        if success:
+            # Atualiza contadores SOMENTE após publicação bem-sucedida
+            global monthly_posts, daily_posts
+            monthly_posts += 1
+            daily_posts += 1
+            
+            # Remove da lista de aprovados e adiciona ao histórico usando ID
+            post_id = post.get("id")
+            if post_id:
+                # Carrega novamente para evitar inconsistências
+                posts_data = load_posts()
+                posts_data["approved"] = [p for p in posts_data["approved"] 
+                                        if p.get("id") != post_id]
+            
+                post["posted_at"] = datetime.now().isoformat()
+                post["status"] = "posted"
+                posts_data["history"].append(post)
+                save_posts(posts_data)
+                
+                logging.info(f"Post 'now' publicado com sucesso: {message}")
+            else:
+                logging.warning(f"Post sem ID encontrado: {post['text'][:30]}...")
+        else:
+            logging.error(f"Falha ao publicar post 'now': {message}")
 
 def show_statistics():
     """Exibe estatísticas sobre as postagens."""
@@ -716,7 +781,11 @@ def display_dashboard():
                 print("Tendências atualizadas com sucesso!")
             else:
                 print("Falha ao atualizar tendências. Verifique o log para mais detalhes.")
-            time.sleep(2)
+            print("Aguarde...")
+            for i in range(1): # Substituído time.sleep
+                print(".", end="", flush=True)
+                time.sleep(0.2)
+            print()
         elif choice == "7":
             show_statistics()
         elif choice == "0":
@@ -728,53 +797,11 @@ def display_dashboard():
                 break
         else:
             print("Opção inválida!")
-            time.sleep(1)
-
-def process_pending_now_posts():
-    """
-    Processa posts aprovados com horário "now" para publicação imediata.
-    Executado a cada 5 minutos pelo scheduler.
-    """
-    if not can_post_today() or not can_post_this_month():
-        logging.warning("Não é possível processar posts 'now' devido aos limites da API")
-        return
-    
-    posts_data = load_posts()
-    now_posts = [p for p in posts_data["approved"] if p["time"] == "now"]
-    
-    if not now_posts:
-        return
-    
-    logging.info(f"Processando {len(now_posts)} posts com horário 'now'")
-    
-    for post in now_posts:
-        logging.info(f"Publicando post imediato: '{post['text'][:50]}...'")
-        
-        success, message, tweet_data = post_tweet(post["text"])
-        
-        if success:
-            # Atualiza contadores SOMENTE após publicação bem-sucedida
-            global monthly_posts, daily_posts
-            monthly_posts += 1
-            daily_posts += 1
-            
-            # Remove da lista de aprovados e adiciona ao histórico
-            # Usa ID para identificação segura
-            post_id = post.get("id")
-            if post_id:
-                posts_data["approved"] = [p for p in posts_data["approved"] 
-                                        if p.get("id") != post_id]
-            
-                post["posted_at"] = datetime.now().isoformat()
-                post["status"] = "posted"
-                posts_data["history"].append(post)
-                save_posts(posts_data)
-                
-                logging.info(f"Post 'now' publicado com sucesso: {message}")
-            else:
-                logging.warning(f"Post sem ID encontrado: {post['text'][:30]}...")
-        else:
-            logging.error(f"Falha ao publicar post 'now': {message}")
+            print("Aguarde...")
+            for i in range(1): # Substituído time.sleep
+                print(".", end="", flush=True)
+                time.sleep(0.2)
+            print()
 
 def scheduler_job():
     """Função executada pela thread do scheduler."""
@@ -784,102 +811,8 @@ def scheduler_job():
     schedule.every().day.at("00:00").do(reset_daily_count)
     schedule.every().day.at(TREND_UPDATE_HOUR).do(update_trends)
     schedule.every(5).minutes.do(process_pending_now_posts)
-    
-    # Agenda para verificar o primeiro dia do mês
-    def check_month_reset():
-        if datetime.now().day == 1 and datetime.now().hour == 0:
-            reset_monthly_count()
-    
-    schedule.every().hour.do(check_month_reset)
+    schedule.every(1).hours.do(check_month_reset)  # Verificação horária para reset
     
     while bot_running:
         schedule.run_pending()
         time.sleep(1)
-
-def recover_scheduled_posts():
-    """
-    Recupera os agendamentos de posts salvos no arquivo posts.json.
-    
-    Returns:
-        int: Número de posts recuperados e agendados.
-    """
-    scheduled_posts = get_scheduled_posts_for_recovery()
-    count = 0
-    
-    if scheduled_posts:
-        logging.info(f"Recuperando {len(scheduled_posts)} posts agendados")
-        
-        for post in scheduled_posts:
-            if post["time"] != "now" and validate_time(post["time"]):
-                if schedule_post_at_time(post):
-                    count += 1
-                    
-    logging.info(f"Recuperados {count} agendamentos de posts")
-    return count
-
-def main():
-    """Função principal do bot."""
-    global monthly_posts, daily_posts, scheduler_thread, trends, trends_last_updated
-    
-    try:
-        clear_screen()
-        print("Inicializando Bot para X...\n")
-        
-        # Inicializa a API
-        success, message = initialize_api()
-        if not success:
-            logging.critical(f"Falha ao inicializar API: {message}")
-            print(f"Erro de inicialização: {message}")
-            print("\nVerifique suas credenciais no arquivo .env e tente novamente.")
-            return
-        
-        print(f"API inicializada: {message}")
-        
-        # Carrega contadores de posts
-        monthly_posts, daily_posts = load_post_counts()
-        print(f"Contadores carregados: {monthly_posts} posts neste mês, {daily_posts} posts hoje")
-        
-        # Carrega tendências
-        print("Carregando tendências...")
-        if update_trends():
-            print("Tendências carregadas com sucesso!")
-        else:
-            print("Aviso: Não foi possível carregar tendências. Tentaremos novamente mais tarde.")
-        
-        # Recuperação de agendamentos
-        print("Recuperando agendamentos...")
-        recovered_posts = recover_scheduled_posts()
-        
-        if recovered_posts > 0:
-            print(f"Recuperados {recovered_posts} posts agendados.")
-        else:
-            print("Nenhum agendamento para recuperar.")
-        
-        # Inicia a thread do scheduler
-        scheduler_thread = threading.Thread(target=scheduler_job)
-        scheduler_thread.daemon = True
-        scheduler_thread.start()
-        
-        print("\nBot inicializado com sucesso!")
-        print("Pressione ENTER para acessar o dashboard...")
-        input()
-        
-        # Inicia o dashboard interativo
-        display_dashboard()
-        
-    except KeyboardInterrupt:
-        print("\nBot interrompido pelo usuário.")
-        bot_running = False
-        
-    except Exception as e:
-        logging.critical(f"Erro fatal na execução do bot: {e}")
-        print(f"\nErro fatal: {e}")
-        print("Verifique o arquivo de log para mais detalhes.")
-        
-    finally:
-        print("\nEncerrando o bot...")
-        logging.info("Bot encerrado.")
-
-
-if __name__ == "__main__":
-    main()

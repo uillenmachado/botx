@@ -68,6 +68,13 @@ def load_posts():
                             logging.warning(f"A chave '{key}' em posts.json não é uma lista. Corrigindo...")
                             posts_data[key] = []
                     
+                    # Verifica e adiciona IDs para posts que não possuem
+                    for status in required_keys:
+                        for post in posts_data[status]:
+                            if "id" not in post:
+                                logging.warning(f"Post sem ID encontrado em {status}. Adicionando ID.")
+                                post["id"] = str(uuid.uuid4())
+                    
                     # Retorna os dados carregados
                     return posts_data
                     
@@ -119,6 +126,12 @@ def save_posts(posts_data):
                 posts_data[key] = []
             elif not isinstance(posts_data[key], list):
                 posts_data[key] = []
+        
+        # Verifica e adiciona IDs para qualquer post que não tenha
+        for status in required_keys:
+            for post in posts_data[status]:
+                if "id" not in post:
+                    post["id"] = str(uuid.uuid4())
         
         with open(POSTS_FILE, "w", encoding="utf-8") as f:
             json.dump(posts_data, f, indent=4, ensure_ascii=False)
