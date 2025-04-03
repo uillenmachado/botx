@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime
 import time
 from config import (
-    POSTS_FILE, START_HOUR, END_HOUR, MAX_TWEET_LENGTH, 
+    POSTS_FILE, MAX_TWEET_LENGTH, 
     DATE_FORMAT, TIME_PATTERN
 )
 
@@ -150,8 +150,8 @@ def save_posts(posts_data):
 
 def validate_time(time_str):
     """
-    Valida se o horário está no formato correto e dentro do intervalo permitido.
-    Usa expressão regular para validar o formato HH:MM.
+    Valida se o horário está no formato correto (HH:MM).
+    Aceita qualquer horário válido entre 00:00 e 23:59.
     
     Args:
         time_str (str): Horário no formato HH:MM ou "now".
@@ -168,25 +168,7 @@ def validate_time(time_str):
         if not TIME_PATTERN.match(time_str):
             return False
         
-        # Extrai as horas e minutos
-        hours, minutes = map(int, time_str.split(':'))
-        
-        # Verifica se está dentro do intervalo permitido
-        start_hours, start_minutes = map(int, START_HOUR.split(':'))
-        end_hours, end_minutes = map(int, END_HOUR.split(':'))
-        
-        start_total_minutes = start_hours * 60 + start_minutes
-        end_total_minutes = end_hours * 60 + end_minutes
-        time_total_minutes = hours * 60 + minutes
-        
-        # Caso especial: se END_HOUR < START_HOUR (ex: 23:00 a 08:00)
-        if end_total_minutes < start_total_minutes:
-            # Válido se estiver entre START_HOUR e meia-noite OU entre meia-noite e END_HOUR
-            return (time_total_minutes >= start_total_minutes or 
-                   time_total_minutes <= end_total_minutes)
-        else:
-            # Caso normal: START_HOUR <= time <= END_HOUR
-            return start_total_minutes <= time_total_minutes <= end_total_minutes
+        return True
             
     except ValueError:
         return False
@@ -235,7 +217,7 @@ def create_post(text, time="now", posts_data=None):
     
     # Validação do horário
     if not validate_time(time):
-        return False, f"Formato de horário inválido ou fora do intervalo permitido ({START_HOUR}-{END_HOUR})."
+        return False, f"Formato de horário inválido. Use o formato HH:MM ou 'now'."
     
     # Carrega os posts se não foram fornecidos
     if posts_data is None:
@@ -302,7 +284,7 @@ def edit_post(post_index, new_text=None, new_time=None, status="pending", posts_
     # Atualiza o horário se fornecido
     if new_time is not None:
         if not validate_time(new_time):
-            return False, f"Formato de horário inválido ou fora do intervalo permitido ({START_HOUR}-{END_HOUR})."
+            return False, f"Formato de horário inválido. Use o formato HH:MM ou 'now'."
         post["time"] = new_time
         post["edited_at"] = datetime.now().isoformat()
     
@@ -380,7 +362,7 @@ def approve_post(post_index, approve=True, new_time=None, posts_data=None):
     # Se aprovado, atualiza o horário se fornecido
     if new_time is not None:
         if not validate_time(new_time):
-            return False, f"Formato de horário inválido ou fora do intervalo permitido ({START_HOUR}-{END_HOUR}).", None
+            return False, f"Formato de horário inválido. Use o formato HH:MM ou 'now'.", None
         post["time"] = new_time
     
     # Atualiza status e timestamp
@@ -485,10 +467,6 @@ def mark_as_posted(post, posts_data=None):
     if post_id:
         posts_data["scheduled"] = [p for p in posts_data["scheduled"] 
                                 if p.get("id", None) != post_id]
-    else:
-        # Fallback para compatibilidade com posts antigos sem ID
-        posts_data["scheduled"] = [p for p in posts_data["scheduled"] 
-                                if p["text"] != post["text"] or p["time"] != post["time"]]
     
     # Salva as alterações
     return save_posts(posts_data)

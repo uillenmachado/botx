@@ -34,9 +34,9 @@ DAILY_POST_LIMIT = 16        # Máximo de posts por dia
 MONTHLY_POST_LIMIT = 496     # Limite mensal para maximizar o uso da API (500 é o limite real)
 API_USER_LEVEL_LIMIT = 1500  # Limite mensal da API (nível do usuário)
 
-# Configurações de Horários
-START_HOUR = "08:00"        # Horário de início dos posts
-END_HOUR = "23:00"          # Horário de fim dos posts
+# Configurações de Horários - Para fins de informação, mas não mais usadas como restrição
+START_HOUR = "00:00"        # Horário de início dos posts (agora aceita qualquer horário)
+END_HOUR = "23:59"          # Horário de fim dos posts (agora aceita qualquer horário)
 POST_INTERVAL_MINUTES = 60  # Intervalo entre posts (60 minutos)
 TREND_UPDATE_HOUR = "07:00" # Horário para atualização diária das tendências
 
