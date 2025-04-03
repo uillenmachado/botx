@@ -317,6 +317,42 @@ def list_posts():
         
         choice = input("\nEscolha uma opção: ")
         
+        if choice == "1":
+            create_new_post()
+        elif choice == "2":
+            list_posts()
+        elif choice == "3":
+            approve_posts()
+        elif choice == "4":
+            schedule_approved_posts()
+        elif choice == "5":
+            clear_screen()
+            print("\n===== TENDÊNCIAS GLOBAIS =====\n")
+            for line in format_trend_list():
+                print(line)
+            input("\nPressione ENTER para continuar...")
+        elif choice == "6":
+            print("\nAtualizando tendências...")
+            if update_trends():
+                print("Tendências atualizadas com sucesso!")
+            else:
+                print("Falha ao atualizar tendências. Verifique o log para mais detalhes.")
+            time.sleep(0.2)
+            input("\nPressione ENTER para continuar...")
+        elif choice == "7":
+            show_statistics()
+        elif choice == "0":
+            confirm = input("Tem certeza que deseja sair? (S/N): ").upper()
+            if confirm == "S":
+                bot_running = False
+                print("Encerrando o bot...")
+                break
+        else:
+            print("Opção inválida!")
+            print("Aguarde...")
+            time.sleep(0.2)
+            input("\nPressione ENTER para continuar...")
+        
         if choice == "0":
             break
         
@@ -785,6 +821,8 @@ def show_statistics():
 
 def display_dashboard():
     """Exibe o dashboard interativo e processa a entrada do usuário."""
+    global bot_running
+    
     while bot_running:
         clear_screen()
         
@@ -819,112 +857,3 @@ def display_dashboard():
         print("0. Sair")
         
         choice = input("\nEscolha uma opção: ")
-        
-        if choice == "1":
-            create_new_post()
-        elif choice == "2":
-            list_posts()
-        elif choice == "3":
-            approve_posts()
-        elif choice == "4":
-            schedule_approved_posts()
-        elif choice == "5":
-            clear_screen()
-            print("\n===== TENDÊNCIAS GLOBAIS =====\n")
-            for line in format_trend_list():
-                print(line)
-            input("\nPressione ENTER para continuar...")
-        elif choice == "6":
-            print("\nAtualizando tendências...")
-            if update_trends():
-                print("Tendências atualizadas com sucesso!")
-            else:
-                print("Falha ao atualizar tendências. Verifique o log para mais detalhes.")
-            time.sleep(0.2)
-            print()
-        elif choice == "7":
-            show_statistics()
-        elif choice == "0":
-            confirm = input("Tem certeza que deseja sair? (S/N): ").upper()
-            if confirm == "S":
-                global bot_running
-                bot_running = False
-                print("Encerrando o bot...")
-                break
-        else:
-            print("Opção inválida!")
-            print("Aguarde...")
-            time.sleep(0.2)
-            print()
-
-def scheduler_job():
-    """Função executada pela thread do scheduler."""
-    global bot_running
-    
-    # Inicializa o scheduler
-    schedule.every().day.at("00:00").do(reset_daily_count)
-    schedule.every().day.at(TREND_UPDATE_HOUR).do(update_trends)
-    schedule.every(5).minutes.do(process_pending_now_posts)
-    schedule.every(1).hours.do(check_month_reset)  # Verificação horária para reset
-    
-    while bot_running:
-        schedule.run_pending()
-        time.sleep(1)
-
-def main():
-    """
-    Função principal que inicializa e inicia o bot.
-    """
-    global trends, monthly_posts, daily_posts, scheduler_thread, bot_running
-    
-    logging.info("Iniciando o Bot para X...")
-    
-    # Inicializa a API
-    api_success, api_message = initialize_api()
-    logging.info(f"Inicialização da API: {api_message}")
-    
-    if not api_success:
-        logging.error("Falha ao inicializar a API. Verifique suas credenciais.")
-        print("Erro ao inicializar a API. Verifique suas credenciais e o arquivo .env.")
-        print(f"Detalhes: {api_message}")
-        input("Pressione ENTER para sair...")
-        return
-    
-    # Carrega contadores de posts
-    monthly_posts, daily_posts = load_post_counts()
-    
-    # Busca tendências iniciais
-    update_trends()
-    
-    # Verifica posts que deveriam ter sido publicados durante o tempo offline
-    check_missed_schedules()
-    
-    # Recupera agendamentos existentes
-    scheduled_posts = get_scheduled_posts_for_recovery()
-    if scheduled_posts:
-        logging.info(f"Recuperando {len(scheduled_posts)} agendamentos...")
-        for post in scheduled_posts:
-            schedule_post_at_time(post)
-    
-    # Inicia a thread do scheduler
-    scheduler_thread = threading.Thread(target=scheduler_job)
-    scheduler_thread.daemon = True
-    scheduler_thread.start()
-    
-    try:
-        # Inicia o dashboard
-        display_dashboard()
-    except KeyboardInterrupt:
-        logging.info("Bot interrompido pelo usuário.")
-    except Exception as e:
-        logging.error(f"Erro inesperado: {e}")
-    finally:
-        # Encerra o bot graciosamente
-        bot_running = False
-        if scheduler_thread and scheduler_thread.is_alive():
-            scheduler_thread.join(timeout=1)
-        logging.info("Bot encerrado.")
-
-# Ponto de entrada para o script
-if __name__ == "__main__":
-    main()
