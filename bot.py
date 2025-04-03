@@ -317,42 +317,6 @@ def list_posts():
         
         choice = input("\nEscolha uma opção: ")
         
-        if choice == "1":
-            create_new_post()
-        elif choice == "2":
-            list_posts()
-        elif choice == "3":
-            approve_posts()
-        elif choice == "4":
-            schedule_approved_posts()
-        elif choice == "5":
-            clear_screen()
-            print("\n===== TENDÊNCIAS GLOBAIS =====\n")
-            for line in format_trend_list():
-                print(line)
-            input("\nPressione ENTER para continuar...")
-        elif choice == "6":
-            print("\nAtualizando tendências...")
-            if update_trends():
-                print("Tendências atualizadas com sucesso!")
-            else:
-                print("Falha ao atualizar tendências. Verifique o log para mais detalhes.")
-            time.sleep(0.2)
-            input("\nPressione ENTER para continuar...")
-        elif choice == "7":
-            show_statistics()
-        elif choice == "0":
-            confirm = input("Tem certeza que deseja sair? (S/N): ").upper()
-            if confirm == "S":
-                bot_running = False
-                print("Encerrando o bot...")
-                break
-        else:
-            print("Opção inválida!")
-            print("Aguarde...")
-            time.sleep(0.2)
-            input("\nPressione ENTER para continuar...")
-        
         if choice == "0":
             break
         
@@ -396,7 +360,7 @@ def list_posts():
             print("Opção inválida!")
             print("Aguarde...")
             time.sleep(0.2)
-            print()
+            input("\nPressione ENTER para continuar...")
 
 def edit_existing_post(status):
     """
@@ -757,103 +721,3 @@ def process_pending_now_posts():
                 logging.warning(f"Post sem ID encontrado: {post['text'][:30]}...")
         else:
             logging.error(f"Falha ao publicar post 'now' [ID:{post_id}]: {message}")
-
-def check_missed_schedules():
-    """
-    Verifica se há posts agendados que deveriam ter sido publicados enquanto o bot estava offline.
-    Executado na inicialização do bot.
-    """
-    logging.info("Verificando posts agendados que podem ter sido perdidos...")
-    posts_data = load_posts()
-    now = datetime.now()
-    current_time_str = now.strftime("%H:%M")
-    
-    for post in posts_data["scheduled"]:
-        post_time = post.get("time", "")
-        
-        # Pula posts sem horário válido
-        if not validate_time(post_time) or post_time.lower() == "now":
-            continue
-            
-        # Compara horários para ver se já deveria ter sido postado hoje
-        if post_time < current_time_str:
-            post_id = post.get("id", "N/A")[:8]
-            logging.info(f"Encontrado post agendado [ID:{post_id}] que deveria ter sido publicado às {post_time}")
-            
-            # Verifica se pode publicar agora
-            if can_post_today() and can_post_this_month():
-                logging.info(f"Tentando publicar post perdido [ID:{post_id}]")
-                post_scheduled_tweet(post)
-            else:
-                logging.warning(f"Não é possível publicar o post perdido [ID:{post_id}] devido aos limites da API")
-    
-    logging.info("Verificação de posts perdidos concluída")
-
-def show_statistics():
-    """Exibe estatísticas sobre as postagens."""
-    clear_screen()
-    print("\n===== ESTATÍSTICAS =====\n")
-    
-    stats = get_stats()
-    user_success, user_info = get_user_info()
-    
-    print(f"Postagens pendentes: {stats['total_pending']}")
-    print(f"Postagens aprovadas: {stats['total_approved']}")
-    print(f"Postagens agendadas: {stats['total_scheduled']}")
-    print(f"Postagens publicadas: {stats['total_posted']}")
-    print(f"Total de postagens: {stats['total_all']}")
-    print(f"Postagens hoje: {stats['posts_today']}")
-    print(f"Postagens neste mês: {monthly_posts}")
-    print(f"Limite diário: {daily_posts}/{DAILY_POST_LIMIT}")
-    print(f"Limite mensal: {monthly_posts}/{MONTHLY_POST_LIMIT}")
-    
-    if user_success:
-        print("\nInformações da conta:")
-        print(f"Nome: {user_info.get('name', 'N/A')}")
-        print(f"Usuário: @{user_info.get('username', 'N/A')}")
-        
-        if 'followers' in user_info:
-            print(f"Seguidores: {user_info.get('followers', 'N/A')}")
-            print(f"Seguindo: {user_info.get('following', 'N/A')}")
-            print(f"Total de tweets: {user_info.get('tweets', 'N/A')}")
-    
-    input("\nPressione ENTER para continuar...")
-
-def display_dashboard():
-    """Exibe o dashboard interativo e processa a entrada do usuário."""
-    global bot_running
-    
-    while bot_running:
-        clear_screen()
-        
-        # Cabeçalho
-        print("\n===== BOT PARA X - DASHBOARD =====\n")
-        
-        # Informações rápidas
-        stats = get_stats()
-        print(f"Postagens pendentes: {stats['total_pending']} | "
-              f"Aprovadas: {stats['total_approved']} | "
-              f"Agendadas: {stats['total_scheduled']} | "
-              f"Publicadas hoje: {stats['posts_today']}")
-        
-        print(f"Limites: Diário {daily_posts}/{DAILY_POST_LIMIT} | "
-              f"Mensal {monthly_posts}/{MONTHLY_POST_LIMIT}")
-        
-        # Tendências
-        print("\nTendências globais:")
-        trend_list = format_trend_list()
-        for i, trend in enumerate(trend_list[:3]):  # Mostra apenas 3 tendências no dashboard
-            print(trend)
-        
-        # Menu principal
-        print("\nMenu Principal:")
-        print("1. Criar nova postagem")
-        print("2. Listar postagens")
-        print("3. Aprovar postagens pendentes")
-        print("4. Agendar postagens aprovadas")
-        print("5. Ver todas as tendências")
-        print("6. Atualizar tendências")
-        print("7. Ver estatísticas")
-        print("0. Sair")
-        
-        choice = input("\nEscolha uma opção: ")

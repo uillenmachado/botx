@@ -12,18 +12,32 @@ Repositório: github.com/uillenmachado/botx
 """
 
 import os
-from dotenv import load_dotenv
+import logging
 import re
+from dotenv import load_dotenv # type: ignore
+
+# Configuração de log para o carregamento de variáveis de ambiente
+logger = logging.getLogger(__name__)
 
 # Carrega as variáveis de ambiente do arquivo .env
-load_dotenv()
+# Adicionando tratamento de erro e verificação de formato
+try:
+    # Carrega variáveis do arquivo .env
+    dotenv_result = load_dotenv(override=True)
+    
+    if not dotenv_result:
+        logger.warning("Arquivo .env não encontrado ou vazio. Usando variáveis de ambiente do sistema.")
+except Exception as e:
+    logger.error(f"Erro ao carregar arquivo .env: {e}")
+    logger.warning("Prosseguindo com variáveis de ambiente do sistema, se disponíveis.")
 
 # Credenciais da API do X (Twitter)
-API_KEY = os.getenv("API_KEY")
-API_KEY_SECRET = os.getenv("API_KEY_SECRET")
-ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
-ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET")
-BEARER_TOKEN = os.getenv("BEARER_TOKEN")
+# Usa getenv com valor padrão para evitar erros caso a variável não exista
+API_KEY = os.getenv("API_KEY", "")
+API_KEY_SECRET = os.getenv("API_KEY_SECRET", "")
+ACCESS_TOKEN = os.getenv("ACCESS_TOKEN", "")
+ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET", "")
+BEARER_TOKEN = os.getenv("BEARER_TOKEN", "")
 
 # Configurações de Tendências
 WOEID_GLOBAL = 1  # ID para tendências globais (1 = Global)
@@ -70,3 +84,9 @@ def validate_credentials():
     missing_keys = [key for key in required_keys if not os.getenv(key)]
     
     return (len(missing_keys) == 0, missing_keys)
+
+# Verifica credenciais na importação do módulo
+has_credentials, missing_credentials = validate_credentials()
+if not has_credentials:
+    logger.warning(f"Credenciais ausentes ou vazias: {', '.join(missing_credentials)}")
+    logger.warning("O bot pode não funcionar corretamente sem as credenciais adequadas.")
