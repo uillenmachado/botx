@@ -19,7 +19,7 @@ import os
 import logging
 import schedule
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from inputimeout import inputimeout, TimeoutOccurred
 
 # Importa os módulos do projeto
@@ -455,22 +455,37 @@ def recover_scheduled_posts():
         scheduled_posts = post_manager.get_scheduled_posts_for_recovery(posts_data)
         count = 0
         
+        # Verifica a hora atual
+        now = datetime.now()
+        now_time = now.time()
+        today = now.date()
+        tomorrow = (now + timedelta(days=1)).date()
+        
         for post in scheduled_posts:
-            # Verifica se o horário ainda é válido (não passou)
-            now = datetime.now().time()
+            # Extrai a hora do post
             post_time = datetime.strptime(post["time"], "%H:%M").time()
             
-            # Se já passou do horário hoje, não agenda
-            if now > post_time:
-                logging.info(f"Post agendado para {post['time']} não foi recuperado pois o horário já passou: {post['text'][:30]}...")
+            # Decide se o post deve ser agendado para hoje ou amanhã
+            target_date = today if post_time > now_time else tomorrow
+            schedule_datetime = datetime.combine(target_date, post_time)
+            
+            # Calcula o número de segundos até o horário de postagem
+            seconds_until = (schedule_datetime - now).total_seconds()
+            
+            if seconds_until <= 0:
+                logging.info(f"Post agendado para {post['time']} não foi recuperado pois o horário já passou hoje: {post['text'][:30]}...")
                 continue
                 
-            # Agenda o post
+            # Agenda o post como uma tarefa única com o tempo específico
             try:
-                # Cria um job para o post com uma função lambda que captura o post
-                schedule.every().day.at(post["time"]).do(lambda p=post: post_tweet(p))
+                post_id = post.get("id", str(hash(post["text"])))  # Usa ID ou gera um hash se não houver ID
+                
+                # Define uma função anônima capturando o post atual
+                job = schedule.every(int(seconds_until)).seconds.do(lambda p=post: post_tweet(p))
+                job.tag(f"post_{post_id}")  # Adiciona uma tag para identificação
+                
                 count += 1
-                logging.info(f"Post recuperado e agendado para {post['time']}: {post['text'][:30]}...")
+                logging.info(f"Post recuperado e agendado para {schedule_datetime.strftime(DATE_FORMAT)}: {post['text'][:30]}...")
             except Exception as e:
                 logging.error(f"Erro ao agendar post recuperado: {e}")
         
@@ -498,15 +513,38 @@ def schedule_approved_posts():
     
     for i, post in enumerate(approved_posts):
         if post["time"] != "now":
+            # Verifica se o post já não está na lista de agendados (usando ID)
+            post_id = post.get("id", None)
+            if post_id and any(s.get("id", None) == post_id for s in posts_data["scheduled"]):
+                logging.info(f"Post já está agendado, pulando: {post['text'][:30]}...")
+                continue
+                
             # Tenta agendar o post
             try:
-                # Agenda o post capturando o objeto post inteiro numa lambda
-                job = schedule.every().day.at(post["time"]).do(lambda p=post: post_tweet(p))
+                # Obtém a hora atual e a hora do post
+                now = datetime.now()
+                post_time = datetime.strptime(post["time"], "%H:%M").time()
+                
+                # Decide se o post deve ser agendado para hoje ou amanhã
+                target_date = now.date() if post_time > now.time() else (now + timedelta(days=1)).date()
+                schedule_datetime = datetime.combine(target_date, post_time)
+                
+                # Calcula o número de segundos até o horário de postagem
+                seconds_until = (schedule_datetime - now).total_seconds()
+                
+                if seconds_until <= 0:
+                    logging.warning(f"Post não agendado pois o horário já passou: {post['text'][:30]}...")
+                    continue
+                
+                # Agenda o post como uma tarefa única com o tempo específico
+                job = schedule.every(int(seconds_until)).seconds.do(lambda p=post: post_tweet(p))
+                if post_id:
+                    job.tag(f"post_{post_id}")  # Adiciona uma tag para identificação
                 
                 # Move para agendados
                 success, message, _ = post_manager.schedule_post(0, True, posts_data)
                 if success:
-                    logging.info(f"Post agendado para {post['time']}: {post['text'][:30]}...")
+                    logging.info(f"Post agendado para {schedule_datetime.strftime(DATE_FORMAT)}: {post['text'][:30]}...")
                 else:
                     logging.error(f"Erro ao agendar post: {message}")
                     
@@ -559,8 +597,11 @@ def main():
     # Loop principal do bot
     try:
         while True:
-            # Executa tarefas agendadas pendentes
-            schedule.run_pending()
+            try:
+                # Executa tarefas agendadas pendentes
+                schedule.run_pending()
+            except Exception as schedule_error:
+                logging.error(f"Erro ao executar tarefas agendadas: {schedule_error}")
             
             print("\n=== Dashboard do Bot ===")
             print("1. Criar nova postagem (ver tendências para inspiração)")
@@ -635,8 +676,12 @@ def main():
     try:
         # Loop para manter o bot rodando e executar as tarefas agendadas
         while True:
-            schedule.run_pending()
-            time.sleep(1)
+            try:
+                schedule.run_pending()
+                time.sleep(1)
+            except Exception as e:
+                logging.error(f"Erro ao executar tarefas agendadas: {e}")
+                time.sleep(5)  # Aguarda 5 segundos em caso de erro antes de tentar novamente
     except KeyboardInterrupt:
         print("\nBot encerrado pelo usuário.")
         logging.info("Bot encerrado pelo usuário.")

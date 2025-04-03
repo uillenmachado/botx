@@ -13,6 +13,7 @@ import json
 import os
 import logging
 import re
+import uuid
 from datetime import datetime
 import time
 from config import (
@@ -96,10 +97,20 @@ def save_posts(posts_data):
             with open(backup_file, "w", encoding="utf-8") as f:
                 json.dump(posts_data, f, indent=4, ensure_ascii=False)
             logging.info(f"Backup dos posts salvo em {backup_file}")
+            
+            # Tenta restaurar o arquivo principal a partir do backup
+            try:
+                with open(backup_file, "r", encoding="utf-8") as f_in:
+                    with open(POSTS_FILE, "w", encoding="utf-8") as f_out:
+                        f_out.write(f_in.read())
+                logging.info(f"Arquivo principal restaurado a partir do backup")
+                return True
+            except Exception as restore_err:
+                logging.critical(f"Falha ao restaurar arquivo principal: {restore_err}")
+                return False
         except Exception as backup_err:
             logging.critical(f"Falha ao criar backup dos posts: {backup_err}")
-        
-        return False
+            return False
 
 def validate_time(time_str):
     """
@@ -180,8 +191,9 @@ def create_post(text, time="now", posts_data=None):
     if posts_data is None:
         posts_data = load_posts()
     
-    # Cria o post com metadados
+    # Cria o post com metadados e ID único
     post = {
+        "id": str(uuid.uuid4()),  # Adiciona um ID único
         "text": text,
         "time": time,
         "status": "pending",
@@ -330,9 +342,10 @@ def approve_post(post_index, approve=True, new_time=None, posts_data=None):
     posts_data["pending"].pop(post_index)
     
     # Salva as alterações
-    save_posts(posts_data)
-    
-    return True, f"Postagem aprovada: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}' para {post['time']}", post
+    if save_posts(posts_data):
+        return True, f"Postagem aprovada: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}' para {post['time']}", post
+    else:
+        return False, "Erro ao salvar as alterações após aprovação. Verifique o log para mais detalhes.", None
 
 def schedule_post(post_index, scheduled=True, posts_data=None):
     """
@@ -362,6 +375,14 @@ def schedule_post(post_index, scheduled=True, posts_data=None):
     if post["time"] == "now":
         return False, "Não é possível agendar uma postagem com horário 'now'.", None
     
+    # Verificar se já não está agendado (usando ID único)
+    post_id = post.get("id", None)
+    if scheduled and post_id:
+        # Verifica se já existe um post agendado com o mesmo ID
+        for scheduled_post in posts_data["scheduled"]:
+            if scheduled_post.get("id", None) == post_id:
+                return False, f"Esta postagem já está agendada para {scheduled_post['time']}.", None
+    
     # Atualiza status e timestamp
     post["status"] = "scheduled" if scheduled else "approved"
     post["scheduled_at"] = datetime.now().isoformat() if scheduled else None
@@ -373,17 +394,18 @@ def schedule_post(post_index, scheduled=True, posts_data=None):
         message = f"Postagem agendada: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}' para {post['time']}"
     else:
         posts_data["approved"].append(post)
-        # Encontra e remove da lista de agendados
+        # Encontra e remove da lista de agendados usando o ID único
         for i, p in enumerate(posts_data["scheduled"]):
-            if p["text"] == post["text"] and p["time"] == post["time"]:
+            if p.get("id", None) == post_id:
                 posts_data["scheduled"].pop(i)
                 break
         message = f"Agendamento removido: '{post['text'][:30]}{'...' if len(post['text']) > 30 else ''}'"
     
     # Salva as alterações
-    save_posts(posts_data)
-    
-    return True, message, post
+    if save_posts(posts_data):
+        return True, message, post
+    else:
+        return False, "Erro ao salvar as alterações após agendamento. Verifique o log para mais detalhes.", None
 
 def mark_as_posted(post, posts_data=None):
     """
@@ -408,9 +430,15 @@ def mark_as_posted(post, posts_data=None):
     # Adiciona ao histórico
     posts_data["history"].append(post)
     
-    # Remove da lista de agendados se estiver lá
-    posts_data["scheduled"] = [p for p in posts_data["scheduled"] 
-                             if p["text"] != post["text"] or p["time"] != post["time"]]
+    # Remove da lista de agendados se estiver lá, usando o ID único
+    post_id = post.get("id", None)
+    if post_id:
+        posts_data["scheduled"] = [p for p in posts_data["scheduled"] 
+                                if p.get("id", None) != post_id]
+    else:
+        # Fallback para compatibilidade com posts antigos sem ID
+        posts_data["scheduled"] = [p for p in posts_data["scheduled"] 
+                                if p["text"] != post["text"] or p["time"] != post["time"]]
     
     # Salva as alterações
     return save_posts(posts_data)
@@ -455,22 +483,26 @@ def get_post_list(status="all", posts_data=None):
     if status == "all" or status == "pending":
         for i, post in enumerate(posts_data["pending"]):
             created_at = datetime.fromisoformat(post["created_at"]).strftime(DATE_FORMAT) if "created_at" in post else "N/A"
-            result.append(f"Pendente #{i+1}: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Criado em: {created_at}")
+            post_id = post.get("id", "N/A")[:8]  # Exibe apenas os primeiros 8 caracteres do ID
+            result.append(f"Pendente #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Criado em: {created_at}")
     
     if status == "all" or status == "approved":
         for i, post in enumerate(posts_data["approved"]):
             approved_at = datetime.fromisoformat(post["approved_at"]).strftime(DATE_FORMAT) if "approved_at" in post else "N/A"
-            result.append(f"Aprovado #{i+1}: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Aprovado em: {approved_at}")
+            post_id = post.get("id", "N/A")[:8]
+            result.append(f"Aprovado #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Aprovado em: {approved_at}")
     
     if status == "all" or status == "scheduled":
         for i, post in enumerate(posts_data["scheduled"]):
             scheduled_at = datetime.fromisoformat(post["scheduled_at"]).strftime(DATE_FORMAT) if "scheduled_at" in post else "N/A"
-            result.append(f"Agendado #{i+1}: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Agendado em: {scheduled_at}")
+            post_id = post.get("id", "N/A")[:8]
+            result.append(f"Agendado #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Agendado em: {scheduled_at}")
     
     if status == "all" or status == "history":
         for i, post in enumerate(posts_data["history"]):
             posted_at = datetime.fromisoformat(post["posted_at"]).strftime(DATE_FORMAT) if "posted_at" in post else "N/A"
-            result.append(f"Publicado #{i+1}: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Publicado em: {posted_at}")
+            post_id = post.get("id", "N/A")[:8]
+            result.append(f"Publicado #{i+1} [ID:{post_id}]: '{post['text'][:50]}{'...' if len(post['text']) > 50 else ''}' | Horário: {post['time']} | Publicado em: {posted_at}")
     
     return result
 

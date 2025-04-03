@@ -122,23 +122,37 @@ def get_trends():
         trends = api_v1.get_place_trends(id=WOEID_GLOBAL)
         timestamp = datetime.now()
         
-        if trends and len(trends) > 0 and isinstance(trends[0], dict) and "trends" in trends[0]:
-            # Extrai e filtra as tendências
-            trend_list = []
-            for trend in trends[0]["trends"][:NUM_TRENDS]:
-                name = trend["name"]
-                volume = trend.get("tweet_volume", "N/A")
-                trend_list.append({
-                    "name": name,
-                    "volume": volume
-                })
+        # Validação mais robusta da resposta da API
+        if not trends:
+            logging.warning("API retornou resposta vazia para tendências.")
+            return [{"name": "Não foi possível obter tendências", "volume": "N/A"}], timestamp
             
-            trend_names = [t["name"] for t in trend_list]
-            logging.info(f"Tendências atualizadas: {', '.join(trend_names)}")
-            return trend_list, timestamp
-        else:
-            logging.error("Nenhuma tendência encontrada.")
+        if not isinstance(trends, list) or len(trends) == 0:
+            logging.warning(f"API retornou resposta em formato inesperado: {type(trends)}")
+            return [{"name": "Resposta da API em formato inesperado", "volume": "N/A"}], timestamp
+            
+        if not isinstance(trends[0], dict) or "trends" not in trends[0]:
+            logging.warning(f"Formato de tendências inesperado: {trends}")
+            return [{"name": "Formato de tendências inesperado", "volume": "N/A"}], timestamp
+        
+        # Extrai e filtra as tendências
+        trend_list = []
+        for trend in trends[0]["trends"][:NUM_TRENDS]:
+            name = trend.get("name", "N/A")
+            volume = trend.get("tweet_volume", "N/A")
+            trend_list.append({
+                "name": name,
+                "volume": volume
+            })
+        
+        # Verifica se realmente conseguimos extrair tendências
+        if not trend_list:
+            logging.warning("Nenhuma tendência encontrada na resposta da API.")
             return [{"name": "Nenhuma tendência disponível", "volume": "N/A"}], timestamp
+        
+        trend_names = [t["name"] for t in trend_list]
+        logging.info(f"Tendências atualizadas: {', '.join(trend_names)}")
+        return trend_list, timestamp
             
     except tweepy.TweepyException as e:
         error_msg = str(e)
