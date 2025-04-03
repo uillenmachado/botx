@@ -54,6 +54,7 @@ daily_posts = 0
 bot_running = True
 scheduler_thread = None
 scheduled_jobs = {}  # Dicionário para armazenar referências aos jobs agendados
+job_lock = threading.Lock()  # Lock para operações de agendamento
 
 # Função para limpar a tela
 def clear_screen():
@@ -103,7 +104,7 @@ def update_trends():
             logging.info(f"Tendências atualizadas: {', '.join([t['name'] for t in trends])}")
             return True
         else:
-            logging.error(f"Falha ao atualizar tendências: {trends_data[0]['name']}")
+            logging.error(f"Falha ao atualizar tendências: {trends_data[0]['name'] if trends_data else 'Sem dados'}")
             return False
     except Exception as e:
         logging.error(f"Erro ao atualizar tendências: {e}")
@@ -125,13 +126,16 @@ def load_post_counts():
     
     for post in posts_data["history"]:
         if "posted_at" in post:
-            posted_date = datetime.fromisoformat(post["posted_at"]).date()
-            # Conta mensal
-            if posted_date.replace(day=1) == current_month:
-                monthly_count += 1
-            # Conta diária
-            if posted_date == today:
-                daily_count += 1
+            try:
+                posted_date = datetime.fromisoformat(post["posted_at"]).date()
+                # Conta mensal
+                if posted_date.replace(day=1) == current_month:
+                    monthly_count += 1
+                # Conta diária
+                if posted_date == today:
+                    daily_count += 1
+            except (ValueError, TypeError):
+                logging.warning(f"Formato de data inválido para post: {post.get('id', 'N/A')[:8]}")
     
     logging.info(f"Contagens carregadas: {monthly_count} posts neste mês, {daily_count} posts hoje")
     return monthly_count, daily_count
@@ -201,7 +205,8 @@ def post_scheduled_tweet(post):
         logging.warning(f"Post '{post['text'][:30]}...' não publicado devido aos limites da API")
         return False
     
-    logging.info(f"Publicando post agendado: '{post['text'][:50]}...'")
+    post_id = post.get("id", "N/A")[:8]
+    logging.info(f"Publicando post agendado [ID:{post_id}]: '{post['text'][:50]}...'")
     
     try:
         success, message, tweet_data = post_tweet(post["text"])
@@ -214,13 +219,13 @@ def post_scheduled_tweet(post):
             # Marca como publicado
             mark_as_posted(post)
             
-            logging.info(f"Post publicado com sucesso: {message}")
+            logging.info(f"Post [ID:{post_id}] publicado com sucesso: {message}")
             return True
         else:
-            logging.error(f"Falha ao publicar post: {message}")
+            logging.error(f"Falha ao publicar post [ID:{post_id}]: {message}")
             return False
     except Exception as e:
-        logging.error(f"Erro ao publicar post agendado: {e}")
+        logging.error(f"Erro ao publicar post agendado [ID:{post_id}]: {e}")
         return False
 
 def schedule_post_at_time(post):
@@ -235,7 +240,7 @@ def schedule_post_at_time(post):
     """
     global scheduled_jobs
     
-    if post["time"] == "now":
+    if post.get("time", "").lower() == "now":
         return False
     
     try:
@@ -248,13 +253,15 @@ def schedule_post_at_time(post):
         job = schedule.every().day.at(post["time"]).do(post_scheduled_tweet, post)
         
         # Armazena referência ao job usando o ID do post
-        if "id" in post:
-            scheduled_jobs[post["id"]] = job
-            logging.info(f"Post agendado para {post['time']}: '{post['text'][:50]}...' [ID: {post['id'][:8]}]")
+        post_id = post.get("id")
+        if post_id:
+            with job_lock:
+                scheduled_jobs[post_id] = job
+                logging.info(f"Post agendado para {post['time']}: '{post['text'][:50]}...' [ID: {post_id[:8]}]")
+            return True
         else:
             logging.warning(f"Agendamento de post sem ID: {post['text'][:50]}...")
-        
-        return True
+            return False
     except Exception as e:
         logging.error(f"Erro ao agendar post: {e}")
         return False
@@ -330,7 +337,7 @@ def list_posts():
                 for post in post_list:
                     print(post)
                 
-                # Opções para gerenciar posts pendentes e aprovados
+                # Opções para gerenciar posts pendentes, aprovados e agendados
                 if choice in ["1", "2", "3"]:
                     print("\nOpções:")
                     print("E - Editar uma postagem")
@@ -348,9 +355,7 @@ def list_posts():
         else:
             print("Opção inválida!")
             print("Aguarde...")
-            for i in range(1): # Substituído time.sleep
-                print(".", end="", flush=True)
-                time.sleep(0.2)
+            time.sleep(0.2)
             print()
 
 def edit_existing_post(status):
@@ -451,8 +456,11 @@ def approve_posts():
         start_time = time.time()
         action = None
         
+        # Loop para verificar entrada com timeout
         while time.time() - start_time < APPROVE_TIMEOUT and action is None:
-            if sys.stdin in select.select([sys.stdin], [], [], 0.1)[0]:
+            # Verificação de entrada disponível com select
+            rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+            if rlist:
                 action = input().upper()
         
         if action is None:
@@ -483,7 +491,7 @@ def approve_posts():
                 print(f"Sucesso! {message}")
                 
                 # Perguntar se deseja postar agora ou agendar
-                if post["time"] != "now":
+                if post.get("time", "").lower() != "now":
                     post_now = input("Deseja postar agora em vez de agendar? (S/N): ").upper()
                     
                     if post_now == "S":
@@ -583,11 +591,16 @@ def schedule_approved_posts():
         return
     
     for i, post_str in enumerate(approved_posts):
+        # Verifica se ainda há posts aprovados válidos
+        if i >= len(posts_data["approved"]):
+            print("\nTodas as postagens foram processadas.")
+            break
+            
         # Localiza o post pelo índice correto
         post = posts_data["approved"][i]
         
         # Pula posts com horário "now" pois eles serão postados imediatamente
-        if post["time"] == "now":
+        if post.get("time", "").lower() == "now":
             continue
         
         print(f"\n{post_str}")
@@ -615,6 +628,9 @@ def schedule_approved_posts():
         elif action == "P":
             # Postar agora
             if can_post_today() and can_post_this_month():
+                post_id = post.get("id", "N/A")[:8]
+                logging.info(f"Tentando postar imediatamente [ID:{post_id}]: '{post['text'][:50]}...'")
+                
                 success, message, _ = post_tweet(post["text"])
                 
                 if success:
@@ -625,6 +641,8 @@ def schedule_approved_posts():
                     # Remove da lista de aprovados e adiciona ao histórico usando ID
                     post_id = post.get("id")
                     if post_id:
+                        # Recarrega posts para garantir dados atualizados
+                        posts_data = load_posts()
                         posts_data["approved"] = [p for p in posts_data["approved"] 
                                                 if p.get("id") != post_id]
                         
@@ -657,7 +675,7 @@ def process_pending_now_posts():
         return
     
     posts_data = load_posts()
-    now_posts = [p for p in posts_data["approved"] if p["time"] == "now"]
+    now_posts = [p for p in posts_data["approved"] if p.get("time", "").lower() == "now"]
     
     if not now_posts:
         return
@@ -665,7 +683,8 @@ def process_pending_now_posts():
     logging.info(f"Processando {len(now_posts)} posts com horário 'now'")
     
     for post in now_posts:
-        logging.info(f"Publicando post imediato: '{post['text'][:50]}...'")
+        post_id = post.get("id", "N/A")[:8]
+        logging.info(f"Publicando post imediato [ID:{post_id}]: '{post['text'][:50]}...'")
         
         success, message, tweet_data = post_tweet(post["text"])
         
@@ -688,11 +707,11 @@ def process_pending_now_posts():
                 posts_data["history"].append(post)
                 save_posts(posts_data)
                 
-                logging.info(f"Post 'now' publicado com sucesso: {message}")
+                logging.info(f"Post 'now' [ID:{post_id}] publicado com sucesso: {message}")
             else:
                 logging.warning(f"Post sem ID encontrado: {post['text'][:30]}...")
         else:
-            logging.error(f"Falha ao publicar post 'now': {message}")
+            logging.error(f"Falha ao publicar post 'now' [ID:{post_id}]: {message}")
 
 def show_statistics():
     """Exibe estatísticas sobre as postagens."""
@@ -781,10 +800,7 @@ def display_dashboard():
                 print("Tendências atualizadas com sucesso!")
             else:
                 print("Falha ao atualizar tendências. Verifique o log para mais detalhes.")
-            print("Aguarde...")
-            for i in range(1): # Substituído time.sleep
-                print(".", end="", flush=True)
-                time.sleep(0.2)
+            time.sleep(0.2)
             print()
         elif choice == "7":
             show_statistics()
@@ -798,9 +814,7 @@ def display_dashboard():
         else:
             print("Opção inválida!")
             print("Aguarde...")
-            for i in range(1): # Substituído time.sleep
-                print(".", end="", flush=True)
-                time.sleep(0.2)
+            time.sleep(0.2)
             print()
 
 def scheduler_job():
@@ -831,6 +845,9 @@ def main():
     
     if not api_success:
         logging.error("Falha ao inicializar a API. Verifique suas credenciais.")
+        print("Erro ao inicializar a API. Verifique suas credenciais e o arquivo .env.")
+        print(f"Detalhes: {api_message}")
+        input("Pressione ENTER para sair...")
         return
     
     # Carrega contadores de posts

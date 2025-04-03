@@ -11,7 +11,7 @@ Autor: Uillen Machado
 Repositório: github.com/uillenmachado/botx
 """
 
-import tweepy
+import tweepy # type: ignore
 import logging
 import time
 from functools import wraps
@@ -43,18 +43,26 @@ def retry_with_backoff(max_retries=MAX_RETRIES, initial_backoff=INITIAL_BACKOFF)
         def wrapper(*args, **kwargs):
             retries = 0
             backoff = initial_backoff
+            last_exception = None
+            
             while retries < max_retries:
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
+                    last_exception = e
                     retries += 1
                     if retries == max_retries:
                         logging.error(f"Falha após {max_retries} tentativas: {e}")
-                        raise
+                        break
                     logging.warning(f"Tentativa {retries} falhou: {e}. Tentando novamente em {backoff} segundos.")
                     time.sleep(backoff)
                     backoff *= 2  # Backoff exponencial
-            return None  # Caso todas as tentativas falhem
+            
+            # Se chegamos aqui, todas as tentativas falharam
+            if last_exception:
+                raise last_exception
+            return None
+            
         return wrapper
     return decorator
 
@@ -69,6 +77,20 @@ def initialize_api():
     global client, api_v1
     
     try:
+        # Verifica se temos todas as credenciais necessárias
+        if not all([API_KEY, API_KEY_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET, BEARER_TOKEN]):
+            missing_creds = []
+            if not API_KEY: missing_creds.append("API_KEY")
+            if not API_KEY_SECRET: missing_creds.append("API_KEY_SECRET")
+            if not ACCESS_TOKEN: missing_creds.append("ACCESS_TOKEN")
+            if not ACCESS_TOKEN_SECRET: missing_creds.append("ACCESS_TOKEN_SECRET")
+            if not BEARER_TOKEN: missing_creds.append("BEARER_TOKEN")
+            
+            missing_str = ", ".join(missing_creds)
+            error_msg = f"Credenciais ausentes: {missing_str}. Verifique seu arquivo .env."
+            logging.error(error_msg)
+            return False, error_msg
+        
         # Inicializa cliente da API v2 (para postagens)
         client = tweepy.Client(
             bearer_token=BEARER_TOKEN,
@@ -96,8 +118,16 @@ def initialize_api():
         return True, f"Conectado à API do X como @{username}"
         
     except tweepy.TweepyException as e:
-        logging.error(f"Erro ao conectar com a API do X: {e}")
-        return False, f"Erro ao conectar com a API do X: {e}"
+        error_msg = str(e)
+        logging.error(f"Erro ao conectar com a API do X: {error_msg}")
+        
+        # Tratamento mais específico de erros de autenticação
+        if "authentication" in error_msg.lower() or "401" in error_msg:
+            return False, "Erro de autenticação. Verifique suas credenciais da API."
+        elif "rate limit" in error_msg.lower() or "429" in error_msg:
+            return False, "Limite de taxa excedido ao conectar com a API. Tente novamente mais tarde."
+        else:
+            return False, f"Erro ao conectar com a API do X: {error_msg}"
     except Exception as e:
         logging.error(f"Erro inesperado ao inicializar API: {e}")
         return False, f"Erro inesperado ao inicializar API: {e}"
@@ -159,9 +189,9 @@ def get_trends():
         logging.error(f"Erro ao buscar tendências: {error_msg}")
         
         # Trata diferentes tipos de erros da API
-        if "rate limit" in error_msg.lower():
+        if "rate limit" in error_msg.lower() or "429" in error_msg:
             return [{"name": "Limite de taxa excedido ao buscar tendências", "volume": "N/A"}], datetime.now()
-        elif "authentication" in error_msg.lower() or "unauthorized" in error_msg.lower():
+        elif "authentication" in error_msg.lower() or "401" in error_msg:
             return [{"name": "Erro de autenticação ao buscar tendências", "volume": "N/A"}], datetime.now()
         else:
             return [{"name": f"Erro ao buscar tendências: {error_msg}", "volume": "N/A"}], datetime.now()
@@ -217,9 +247,9 @@ def post_tweet(text):
         # Trata erros específicos da API
         if "duplicate content" in error_msg.lower():
             return False, "Erro: Conteúdo duplicado. O X não permite postar o mesmo texto duas vezes seguidas.", None
-        elif "authorization" in error_msg.lower():
+        elif "authorization" in error_msg.lower() or "authentication" in error_msg.lower() or "401" in error_msg:
             return False, "Erro de autorização. Verifique suas credenciais da API.", None
-        elif "rate limit" in error_msg.lower():
+        elif "rate limit" in error_msg.lower() or "429" in error_msg:
             return False, "Limite de taxa excedido. Aguarde alguns minutos e tente novamente.", None
         elif "text is too long" in error_msg.lower():
             return False, f"O texto excede o limite de caracteres permitido pelo X.", None
@@ -230,6 +260,7 @@ def post_tweet(text):
         logging.error(f"Erro inesperado ao publicar tweet: {e}")
         return False, f"Erro inesperado ao publicar tweet: {e}", None
 
+@retry_with_backoff()
 def get_user_info():
     """
     Obtém informações do usuário autenticado.
@@ -268,9 +299,21 @@ def get_user_info():
         else:
             return False, {"error": "Não foi possível obter informações do usuário"}
             
+    except tweepy.TweepyException as e:
+        error_msg = str(e)
+        logging.error(f"Erro ao obter informações do usuário: {error_msg}")
+        
+        # Tratamento mais específico de erros
+        if "authentication" in error_msg.lower() or "401" in error_msg:
+            return False, {"error": "Erro de autenticação ao obter informações do usuário"}
+        elif "rate limit" in error_msg.lower() or "429" in error_msg:
+            return False, {"error": "Limite de taxa excedido ao obter informações do usuário"}
+        else:
+            return False, {"error": f"Erro ao obter informações do usuário: {error_msg}"}
+            
     except Exception as e:
-        logging.error(f"Erro ao obter informações do usuário: {e}")
-        return False, {"error": f"Erro ao obter informações do usuário: {e}"}
+        logging.error(f"Erro inesperado ao obter informações do usuário: {e}")
+        return False, {"error": f"Erro inesperado ao obter informações do usuário: {e}"}
 
 def check_api_limits():
     """

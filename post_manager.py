@@ -16,6 +16,7 @@ import re
 import uuid
 from datetime import datetime
 import time
+import threading
 from config import (
     POSTS_FILE, MAX_TWEET_LENGTH, 
     DATE_FORMAT, TIME_PATTERN
@@ -29,6 +30,9 @@ DEFAULT_POSTS_DATA = {
     "history": []     # Histórico de posts publicados
 }
 
+# Lock para operações de arquivo para evitar condições de corrida
+file_lock = threading.Lock()
+
 def load_posts():
     """
     Carrega as postagens do arquivo posts.json ou inicializa um novo arquivo.
@@ -37,71 +41,72 @@ def load_posts():
     Returns:
         dict: Dicionário com as listas de posts pendentes, aprovados e agendados.
     """
-    try:
-        if os.path.exists(POSTS_FILE):
-            # Verificação adicional do tamanho do arquivo para prevenir falhas
-            if os.path.getsize(POSTS_FILE) == 0:
-                logging.error(f"Arquivo {POSTS_FILE} está vazio. Criando nova estrutura.")
-                return DEFAULT_POSTS_DATA.copy()
-                
-            with open(POSTS_FILE, "r", encoding="utf-8") as f:
-                try:
-                    file_content = f.read()
-                    if not file_content.strip():
-                        logging.error(f"Arquivo {POSTS_FILE} está vazio. Criando nova estrutura.")
-                        return DEFAULT_POSTS_DATA.copy()
-                    
-                    posts_data = json.loads(file_content)
-                    
-                    # Verifica se o arquivo tem a estrutura correta
-                    required_keys = ["pending", "approved", "scheduled", "history"]
-                    missing_keys = [key for key in required_keys if key not in posts_data]
-                    
-                    if missing_keys:
-                        logging.warning(f"Estrutura incorreta no arquivo posts.json. Chaves ausentes: {missing_keys}")
-                        for key in missing_keys:
-                            posts_data[key] = []
-                    
-                    # Verifica se as chaves são listas
-                    for key in required_keys:
-                        if not isinstance(posts_data.get(key, []), list):
-                            logging.warning(f"A chave '{key}' em posts.json não é uma lista. Corrigindo...")
-                            posts_data[key] = []
-                    
-                    # Verifica e adiciona IDs para posts que não possuem
-                    for status in required_keys:
-                        for post in posts_data[status]:
-                            if "id" not in post:
-                                logging.warning(f"Post sem ID encontrado em {status}. Adicionando ID.")
-                                post["id"] = str(uuid.uuid4())
-                    
-                    # Retorna os dados carregados
-                    return posts_data
-                    
-                except (json.JSONDecodeError, ValueError) as e:
-                    logging.error(f"Erro ao decodificar {POSTS_FILE}: {e}. Criando backup e novo arquivo.")
-                    
-                    # Tenta criar um backup do arquivo corrompido
-                    try:
-                        backup_file = f"{POSTS_FILE}.corrupted.{int(time.time())}"
-                        with open(POSTS_FILE, "r", encoding="utf-8") as source:
-                            with open(backup_file, "w", encoding="utf-8") as target:
-                                target.write(source.read())
-                        logging.info(f"Backup do arquivo corrompido criado em {backup_file}")
-                    except Exception as backup_err:
-                        logging.error(f"Erro ao criar backup do arquivo corrompido: {backup_err}")
-                    
+    with file_lock:
+        try:
+            if os.path.exists(POSTS_FILE):
+                # Verificação adicional do tamanho do arquivo para prevenir falhas
+                if os.path.getsize(POSTS_FILE) == 0:
+                    logging.error(f"Arquivo {POSTS_FILE} está vazio. Criando nova estrutura.")
                     return DEFAULT_POSTS_DATA.copy()
-        else:
-            # Arquivo não existe, cria um novo com a estrutura padrão
-            posts_data = DEFAULT_POSTS_DATA.copy()
-            save_posts(posts_data)
-            logging.info(f"Arquivo {POSTS_FILE} criado.")
-            return posts_data
-            
-    except Exception as e:
-        logging.error(f"Erro ao carregar posts: {e}")
-        return DEFAULT_POSTS_DATA.copy()
+                    
+                with open(POSTS_FILE, "r", encoding="utf-8") as f:
+                    try:
+                        file_content = f.read()
+                        if not file_content.strip():
+                            logging.error(f"Arquivo {POSTS_FILE} está vazio. Criando nova estrutura.")
+                            return DEFAULT_POSTS_DATA.copy()
+                        
+                        posts_data = json.loads(file_content)
+                        
+                        # Verifica se o arquivo tem a estrutura correta
+                        required_keys = ["pending", "approved", "scheduled", "history"]
+                        missing_keys = [key for key in required_keys if key not in posts_data]
+                        
+                        if missing_keys:
+                            logging.warning(f"Estrutura incorreta no arquivo posts.json. Chaves ausentes: {missing_keys}")
+                            for key in missing_keys:
+                                posts_data[key] = []
+                        
+                        # Verifica se as chaves são listas
+                        for key in required_keys:
+                            if not isinstance(posts_data.get(key, []), list):
+                                logging.warning(f"A chave '{key}' em posts.json não é uma lista. Corrigindo...")
+                                posts_data[key] = []
+                        
+                        # Verifica e adiciona IDs para posts que não possuem
+                        for status in required_keys:
+                            for post in posts_data[status]:
+                                if "id" not in post:
+                                    logging.warning(f"Post sem ID encontrado em {status}. Adicionando ID.")
+                                    post["id"] = str(uuid.uuid4())
+                        
+                        # Retorna os dados carregados
+                        return posts_data
+                        
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logging.error(f"Erro ao decodificar {POSTS_FILE}: {e}. Criando backup e novo arquivo.")
+                        
+                        # Tenta criar um backup do arquivo corrompido
+                        try:
+                            backup_file = f"{POSTS_FILE}.corrupted.{int(time.time())}"
+                            with open(POSTS_FILE, "r", encoding="utf-8") as source:
+                                with open(backup_file, "w", encoding="utf-8") as target:
+                                    target.write(source.read())
+                            logging.info(f"Backup do arquivo corrompido criado em {backup_file}")
+                        except Exception as backup_err:
+                            logging.error(f"Erro ao criar backup do arquivo corrompido: {backup_err}")
+                        
+                        return DEFAULT_POSTS_DATA.copy()
+            else:
+                # Arquivo não existe, cria um novo com a estrutura padrão
+                posts_data = DEFAULT_POSTS_DATA.copy()
+                save_posts(posts_data)
+                logging.info(f"Arquivo {POSTS_FILE} criado.")
+                return posts_data
+                
+        except Exception as e:
+            logging.error(f"Erro ao carregar posts: {e}")
+            return DEFAULT_POSTS_DATA.copy()
 
 def save_posts(posts_data):
     """
@@ -114,52 +119,53 @@ def save_posts(posts_data):
     Returns:
         bool: True se o arquivo foi salvo com sucesso, False caso contrário.
     """
-    try:
-        # Verificação adicional da estrutura antes de salvar
-        if not isinstance(posts_data, dict):
-            logging.error(f"Erro ao salvar posts: a estrutura não é um dicionário")
-            return False
-            
-        required_keys = ["pending", "approved", "scheduled", "history"]
-        for key in required_keys:
-            if key not in posts_data:
-                posts_data[key] = []
-            elif not isinstance(posts_data[key], list):
-                posts_data[key] = []
-        
-        # Verifica e adiciona IDs para qualquer post que não tenha
-        for status in required_keys:
-            for post in posts_data[status]:
-                if "id" not in post:
-                    post["id"] = str(uuid.uuid4())
-        
-        with open(POSTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(posts_data, f, indent=4, ensure_ascii=False)
-        return True
-        
-    except Exception as e:
-        logging.error(f"Erro ao salvar posts: {e}")
-        
-        # Tenta salvar em um arquivo alternativo em caso de erro
+    with file_lock:
         try:
-            backup_file = f"{POSTS_FILE}.backup.{int(time.time())}.json"
-            with open(backup_file, "w", encoding="utf-8") as f:
-                json.dump(posts_data, f, indent=4, ensure_ascii=False)
-            logging.info(f"Backup dos posts salvo em {backup_file}")
-            
-            # Tenta restaurar o arquivo principal a partir do backup
-            try:
-                with open(backup_file, "r", encoding="utf-8") as f_in:
-                    with open(POSTS_FILE, "w", encoding="utf-8") as f_out:
-                        f_out.write(f_in.read())
-                logging.info(f"Arquivo principal restaurado a partir do backup")
-                return True
-            except Exception as restore_err:
-                logging.critical(f"Falha ao restaurar arquivo principal: {restore_err}")
+            # Verificação adicional da estrutura antes de salvar
+            if not isinstance(posts_data, dict):
+                logging.error(f"Erro ao salvar posts: a estrutura não é um dicionário")
                 return False
-        except Exception as backup_err:
-            logging.critical(f"Falha ao criar backup dos posts: {backup_err}")
-            return False
+                
+            required_keys = ["pending", "approved", "scheduled", "history"]
+            for key in required_keys:
+                if key not in posts_data:
+                    posts_data[key] = []
+                elif not isinstance(posts_data[key], list):
+                    posts_data[key] = []
+            
+            # Verifica e adiciona IDs para qualquer post que não tenha
+            for status in required_keys:
+                for post in posts_data[status]:
+                    if "id" not in post:
+                        post["id"] = str(uuid.uuid4())
+            
+            with open(POSTS_FILE, "w", encoding="utf-8") as f:
+                json.dump(posts_data, f, indent=4, ensure_ascii=False)
+            return True
+            
+        except Exception as e:
+            logging.error(f"Erro ao salvar posts: {e}")
+            
+            # Tenta salvar em um arquivo alternativo em caso de erro
+            try:
+                backup_file = f"{POSTS_FILE}.backup.{int(time.time())}.json"
+                with open(backup_file, "w", encoding="utf-8") as f:
+                    json.dump(posts_data, f, indent=4, ensure_ascii=False)
+                logging.info(f"Backup dos posts salvo em {backup_file}")
+                
+                # Tenta restaurar o arquivo principal a partir do backup
+                try:
+                    with open(backup_file, "r", encoding="utf-8") as f_in:
+                        with open(POSTS_FILE, "w", encoding="utf-8") as f_out:
+                            f_out.write(f_in.read())
+                    logging.info(f"Arquivo principal restaurado a partir do backup")
+                    return True
+                except Exception as restore_err:
+                    logging.critical(f"Falha ao restaurar arquivo principal: {restore_err}")
+                    return False
+            except Exception as backup_err:
+                logging.critical(f"Falha ao criar backup dos posts: {backup_err}")
+                return False
 
 def validate_time(time_str):
     """
@@ -174,7 +180,7 @@ def validate_time(time_str):
     """
     try:
         # Caso especial para postagem imediata
-        if time_str == "now":
+        if time_str.lower() == "now":
             return True
         
         # Verifica o formato usando expressão regular (HH:MM)
@@ -183,7 +189,7 @@ def validate_time(time_str):
         
         return True
             
-    except ValueError:
+    except (ValueError, AttributeError):
         return False
 
 def sanitize_text(text):
@@ -196,6 +202,9 @@ def sanitize_text(text):
     Returns:
         str: Texto sanitizado.
     """
+    if not isinstance(text, str):
+        return ""
+        
     # Remove caracteres de controle e normaliza espaços em branco
     sanitized = ' '.join(text.strip().split())
     
@@ -417,7 +426,7 @@ def schedule_post(post_index, scheduled=True, posts_data=None):
     post = posts_data["approved"][post_index]
     
     # Verifica se o horário é válido para agendamento
-    if post["time"] == "now":
+    if post["time"].lower() == "now":
         return False, "Não é possível agendar uma postagem com horário 'now'.", None
     
     # Verificar se já não está agendado (usando ID único)
@@ -577,9 +586,12 @@ def get_stats(posts_data=None):
     
     for post in posts_data["history"]:
         if "posted_at" in post:
-            posted_date = datetime.fromisoformat(post["posted_at"]).date()
-            if posted_date == today:
-                posts_today += 1
+            try:
+                posted_date = datetime.fromisoformat(post["posted_at"]).date()
+                if posted_date == today:
+                    posts_today += 1
+            except (ValueError, TypeError):
+                logging.warning(f"Formato de data inválido para post: {post.get('id', 'N/A')}")
     
     stats["posts_today"] = posts_today
     
