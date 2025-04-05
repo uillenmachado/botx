@@ -43,7 +43,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Importa utilitários e configurações
 try:
     # Tenta importar colorama para suporte a cores no terminal
-    from colorama import init, Fore, Style
+    from colorama import init, Fore, Style # type: ignore
     init()  # Inicializa o colorama
     
     # Define cores
@@ -1359,7 +1359,7 @@ class BotX:
         try:
             # Tenta importar Flask
             try:
-                import flask
+                import flask # type: ignore
             except ImportError:
                 print(COLOR_ERROR + "Flask não está instalado. Não é possível iniciar o servidor web." + COLOR_RESET)
                 print(COLOR_INFO + "Execute 'pip install flask' ou 'python setup.py' para instalar." + COLOR_RESET)

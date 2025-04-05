@@ -49,7 +49,7 @@ DEPENDENCIES = [
 
 # Cores para o terminal (compatível com Windows)
 try:
-    from colorama import init, Fore, Style
+    from colorama import init, Fore, Style # type: ignore
     init()  # Inicializa o colorama (necessário no Windows)
     
     # Define cores
@@ -261,7 +261,7 @@ def install_dependencies():
         if not COLOR_INFO:
             global COLOR_INFO, COLOR_SUCCESS, COLOR_WARNING, COLOR_ERROR, COLOR_HEADER, COLOR_RESET
             try:
-                from colorama import init, Fore, Style
+                from colorama import init, Fore, Style # type: ignore
                 init()
                 COLOR_INFO = Fore.CYAN
                 COLOR_SUCCESS = Fore.GREEN

@@ -2,456 +2,1691 @@
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8"/>
-  <title>Bot X - Dashboard Web</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BotX - Dashboard Web</title>
   <!-- Bootstrap 5 (CDN) -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <!-- Paleta de cores: Azul, Prata, Vermelho (estilo Red Bull) -->
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+  <!-- Estilos próprios -->
   <style>
     :root {
-      --rb-blue: #00205b;   /* Azul escuro Red Bull */
-      --rb-silver: #c4c4c4; /* Prata */
-      --rb-red: #ed1c24;    /* Vermelho */
+      --primary-color: #1D9BF0;     /* Azul Twitter/X */
+      --secondary-color: #0c7abf;   /* Azul mais escuro */
+      --dark-color: #14171A;        /* Quase preto */
+      --light-color: #F5F8FA;       /* Cinza claro */
+      --accent-color: #F45D22;      /* Laranja para destaque */
+      --success-color: #17BF63;     /* Verde */
+      --warning-color: #FFAD1F;     /* Amarelo */
+      --danger-color: #E0245E;      /* Vermelho */
+      --border-radius: 8px;
     }
+    
     body {
-      background: linear-gradient(135deg, var(--rb-blue) 20%, var(--rb-silver) 90%);
-      color: #ffffff;
+      background-color: var(--light-color);
+      color: var(--dark-color);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       min-height: 100vh;
-      margin: 0;
-      padding: 0;
-    }
-    .rb-nav {
-      background-color: var(--rb-red);
-    }
-    .rb-card {
-      background: rgba(255, 255, 255, 0.1);
-      backdrop-filter: blur(3px);
-      border: 1px solid rgba(255,255,255,0.3);
-    }
-    .nav-pills .nav-link.active {
-      background-color: var(--rb-silver) !important;
-      color: var(--rb-blue) !important;
-    }
-    .btn-rb {
-      background-color: var(--rb-red);
-      border: none;
-    }
-    .btn-rb:hover {
-      background-color: #c8102e;
-    }
-    .rb-header {
-      text-align: center;
-      padding: 3rem 1rem 2rem;
-    }
-    .rb-header h1 {
-      font-size: 2.5rem;
-      font-weight: bold;
-      margin-bottom: 0.5rem;
-    }
-    .rb-header p {
-      font-size: 1.2rem;
-    }
-    .content-area {
-      max-width: 1000px;
-      margin: auto;
       padding-bottom: 2rem;
     }
-    label.form-label {
-      color: #f0f0f0;
+    
+    .header-container {
+      background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+      color: white;
+      border-radius: 0 0 var(--border-radius) var(--border-radius);
+      padding: 2rem 0;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
-    pre {
-      white-space: pre-wrap; /* manter quebras de linha */
-      background-color: rgba(0,0,0,0.2);
-      color: #fff;
-      padding: 0.75rem;
-      border-radius: 5px;
-      max-height: 400px;
+    
+    .nav-container {
+      background-color: var(--dark-color);
+      padding: 0.5rem 0;
+    }
+    
+    .card {
+      border-radius: var(--border-radius);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      border: none;
+      margin-bottom: 1.5rem;
+    }
+    
+    .card-header {
+      background-color: rgba(29, 155, 240, 0.1);
+      border-bottom: 1px solid rgba(29, 155, 240, 0.2);
+      padding: 1rem;
+    }
+    
+    .btn-primary {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+    }
+    
+    .btn-primary:hover, .btn-primary:focus {
+      background-color: var(--secondary-color);
+      border-color: var(--secondary-color);
+    }
+    
+    .btn-accent {
+      background-color: var(--accent-color);
+      border-color: var(--accent-color);
+      color: white;
+    }
+    
+    .btn-accent:hover, .btn-accent:focus {
+      background-color: #d85020;
+      border-color: #d85020;
+      color: white;
+    }
+    
+    .char-counter {
+      font-size: 0.9rem;
+      color: #6c757d;
+    }
+    
+    .char-counter.warning {
+      color: var(--warning-color);
+    }
+    
+    .char-counter.danger {
+      color: var(--danger-color);
+    }
+    
+    .post-preview {
+      background-color: white;
+      border: 1px solid #e1e8ed;
+      border-radius: var(--border-radius);
+      padding: 1rem;
+      margin-top: 1rem;
+      max-height: 200px;
       overflow-y: auto;
+      white-space: pre-wrap;
     }
-    .text-secondary {
-      color: #ececec !important;
+    
+    .tab-content {
+      padding-top: 1.5rem;
+    }
+    
+    .list-posts-container {
+      max-height: 500px;
+      overflow-y: auto;
+      background-color: white;
+      border-radius: var(--border-radius);
+      padding: 1rem;
+      border: 1px solid #e1e8ed;
+    }
+    
+    .message-box {
+      padding: 0.75rem;
+      margin: 1rem 0;
+      border-radius: var(--border-radius);
+      display: none;
+    }
+    
+    .message-box.success {
+      background-color: rgba(23, 191, 99, 0.1);
+      border: 1px solid rgba(23, 191, 99, 0.3);
+      color: var(--success-color);
+    }
+    
+    .message-box.error {
+      background-color: rgba(224, 36, 94, 0.1);
+      border: 1px solid rgba(224, 36, 94, 0.3);
+      color: var(--danger-color);
+    }
+    
+    .message-box.info {
+      background-color: rgba(29, 155, 240, 0.1);
+      border: 1px solid rgba(29, 155, 240, 0.3);
+      color: var(--primary-color);
+    }
+    
+    .trend-item {
+      background-color: rgba(29, 155, 240, 0.05);
+      border-radius: var(--border-radius);
+      padding: 0.5rem 1rem;
+      margin-bottom: 0.5rem;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .trend-item:hover {
+      background-color: rgba(29, 155, 240, 0.1);
+    }
+    
+    .stats-card {
+      text-align: center;
+      transition: transform 0.2s;
+    }
+    
+    .stats-card:hover {
+      transform: translateY(-5px);
+    }
+    
+    .stats-card .stats-value {
+      font-size: 2rem;
+      font-weight: bold;
+      color: var(--primary-color);
+    }
+    
+    .stats-card .stats-label {
+      color: #6c757d;
+      font-size: 0.9rem;
+    }
+    
+    .refresh-btn {
+      cursor: pointer;
+      transition: transform 0.3s;
+    }
+    
+    .refresh-btn:hover {
+      transform: rotate(180deg);
+    }
+    
+    /* Loader spinner */
+    .spinner-container {
+      display: flex;
+      justify-content: center;
+      padding: 2rem;
+    }
+    
+    .post-item {
+      padding: 0.75rem;
+      border-bottom: 1px solid #e1e8ed;
+      transition: background-color 0.2s;
+    }
+    
+    .post-item:hover {
+      background-color: rgba(29, 155, 240, 0.05);
+    }
+    
+    .post-item:last-child {
+      border-bottom: none;
+    }
+    
+    /* Status badges */
+    .badge.bg-pending {
+      background-color: var(--warning-color);
+    }
+    
+    .badge.bg-approved {
+      background-color: var(--primary-color);
+    }
+    
+    .badge.bg-scheduled {
+      background-color: var(--success-color);
+    }
+    
+    .badge.bg-posted {
+      background-color: var(--accent-color);
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .header-container {
+        padding: 1.5rem 0;
+      }
+      .header-container h1 {
+        font-size: 1.8rem;
+      }
+      .container {
+        padding-left: 20px;
+        padding-right: 20px;
+      }
     }
   </style>
 </head>
-<body>
 
+<body>
   <!-- Barra de navegação -->
-  <nav class="navbar rb-nav">
-    <div class="container-fluid">
-      <span class="navbar-brand mb-0 h1">Bot X - Dashboard</span>
+  <nav class="navbar navbar-expand-lg navbar-dark nav-container">
+    <div class="container">
+      <a class="navbar-brand" href="#">
+        <i class="bi bi-twitter me-2"></i> BotX Dashboard
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link" href="#" id="refreshStats">
+              <i class="bi bi-arrow-repeat"></i> Atualizar Dados
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" id="openCliLink">
+              <i class="bi bi-terminal"></i> Modo CLI
+            </a>
+          </li>
+        </ul>
+      </div>
     </div>
   </nav>
 
   <!-- Cabeçalho -->
-  <header class="rb-header">
-    <h1>Gerencie Suas Postagens</h1>
-    <p>Interface simples e intuitiva para qualquer pessoa postar no X (Twitter).</p>
+  <header class="header-container">
+    <div class="container text-center">
+      <h1><i class="bi bi-rocket"></i> BotX - Gerenciador de Postagens</h1>
+      <p class="lead">Interface intuitiva para criar, agendar e publicar no X (Twitter)</p>
+    </div>
   </header>
 
-  <div class="content-area">
+  <!-- Estatísticas rápidas -->
+  <div class="container mb-4">
+    <div class="row g-3" id="quickStatsContainer">
+      <!-- Estatísticas serão carregadas via JavaScript -->
+      <div class="col-6 col-md-3">
+        <div class="card stats-card">
+          <div class="card-body">
+            <div class="stats-value" id="statsPending">-</div>
+            <div class="stats-label">Pendentes</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stats-card">
+          <div class="card-body">
+            <div class="stats-value" id="statsApproved">-</div>
+            <div class="stats-label">Aprovadas</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stats-card">
+          <div class="card-body">
+            <div class="stats-value" id="statsScheduled">-</div>
+            <div class="stats-label">Agendadas</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stats-card">
+          <div class="card-body">
+            <div class="stats-value" id="statsToday">-</div>
+            <div class="stats-label">Posts Hoje</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-    <!-- Nav pills (abas) -->
-    <ul class="nav nav-pills justify-content-center mb-4" id="pills-tab" role="tablist">
+  <!-- Conteúdo principal -->
+  <div class="container">
+    <!-- Abas -->
+    <ul class="nav nav-pills nav-fill mb-4" id="mainTabs" role="tablist">
       <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="pills-home-tab" data-bs-toggle="pill"
-                data-bs-target="#pills-home" type="button" role="tab"
-                aria-controls="pills-home" aria-selected="true">
-          Criar / Listar
+        <button class="nav-link active" id="create-tab" data-bs-toggle="tab" data-bs-target="#create" type="button" role="tab">
+          <i class="bi bi-plus-circle"></i> Criar
         </button>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="pills-approve-tab" data-bs-toggle="pill"
-                data-bs-target="#pills-approve" type="button" role="tab"
-                aria-controls="pills-approve" aria-selected="false">
-          Aprovar / Editar
+        <button class="nav-link" id="manage-tab" data-bs-toggle="tab" data-bs-target="#manage" type="button" role="tab">
+          <i class="bi bi-list-check"></i> Gerenciar
         </button>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="pills-delete-tab" data-bs-toggle="pill"
-                data-bs-target="#pills-delete" type="button" role="tab"
-                aria-controls="pills-delete" aria-selected="false">
-          Deletar / Agendar
+        <button class="nav-link" id="schedule-tab" data-bs-toggle="tab" data-bs-target="#schedule" type="button" role="tab">
+          <i class="bi bi-calendar-check"></i> Agendar
         </button>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="pills-stats-tab" data-bs-toggle="pill"
-                data-bs-target="#pills-stats" type="button" role="tab"
-                aria-controls="pills-stats" aria-selected="false">
-          Estatísticas
+        <button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats" type="button" role="tab">
+          <i class="bi bi-bar-chart"></i> Estatísticas
         </button>
       </li>
     </ul>
 
-    <div class="tab-content" id="pills-tabContent">
-
-      <!-- TAB 1: CRIAR / LISTAR -->
-      <div class="tab-pane fade show active" id="pills-home" role="tabpanel" aria-labelledby="pills-home-tab">
-        <div class="rb-card p-4 mb-4">
-          <h3 class="mb-3">Criar Nova Postagem</h3>
-          <form id="formCreatePost" class="row gy-3">
-            <div class="col-12 col-md-8">
-              <label for="createText" class="form-label">Texto da Postagem</label>
-              <textarea class="form-control" id="createText" rows="3" required></textarea>
+    <!-- Conteúdo das abas -->
+    <div class="tab-content" id="mainTabsContent">
+      
+      <!-- Tab 1: Criar Postagem -->
+      <div class="tab-pane fade show active" id="create" role="tabpanel">
+        <div class="row">
+          <!-- Coluna da esquerda: Formulário -->
+          <div class="col-lg-8">
+            <div class="card">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Nova Postagem</h5>
+              </div>
+              <div class="card-body">
+                <!-- Alertas de sucesso/erro -->
+                <div id="createPostMessage" class="message-box"></div>
+                
+                <!-- Formulário -->
+                <form id="createPostForm">
+                  <div class="mb-3">
+                    <label for="postText" class="form-label">Texto da postagem</label>
+                    <textarea class="form-control" id="postText" rows="4" maxlength="280" required></textarea>
+                    <div class="d-flex justify-content-between mt-1">
+                      <small id="charCounter" class="char-counter">0/280 caracteres</small>
+                      <small><a href="#" id="clearTextBtn" class="text-muted">Limpar texto</a></small>
+                  </div>
+              
+              <!-- Tasks agendadas -->
+              <div class="card-footer bg-light">
+                <h6 class="mb-2"><i class="bi bi-alarm"></i> Tarefas Agendadas</h6>
+                <div id="scheduledTasksContainer">
+                  <div class="text-center text-muted small">
+                    Nenhuma tarefa agendada
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="col-12 col-md-4">
-              <label for="createTime" class="form-label">Horário (HH:MM ou 'now')</label>
-              <input type="text" class="form-control" id="createTime" value="now">
-            </div>
-            <div class="col-12">
-              <button type="submit" class="btn btn-rb">Criar Post</button>
-            </div>
-          </form>
-          <!-- Pré-visualização do texto -->
-          <div class="mt-3">
-            <h5>Pré-visualização:</h5>
-            <div id="createPreview" style="white-space: pre-wrap; 
-                                           background-color: rgba(0,0,0,0.15);
-                                           padding:0.75rem; 
-                                           border-radius:5px;">
+            
+            <!-- API Info -->
+            <div class="card mt-4">
+              <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-twitter"></i> API do X (Twitter)</h5>
+              </div>
+              <div class="card-body">
+                <div id="apiInfoLoader" class="spinner-container">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Carregando...</span>
+                  </div>
+                </div>
+                <div id="apiInfoContainer">
+                  <!-- API info será carregada via JavaScript -->
+                  <div class="alert alert-primary" role="alert">
+                    <i class="bi bi-info-circle-fill"></i> O BotX respeita os limites da API do X (Twitter):
+                    <ul class="mb-0 small">
+                      <li>Máximo de 16 posts por dia</li>
+                      <li>Máximo de 496 posts por mês</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <div id="createPostResult" class="mt-2 text-secondary"></div>
-        </div>
-
-        <div class="rb-card p-4">
-          <h3 class="mb-3">Listar Postagens</h3>
-          <div class="row g-3 align-items-end">
-            <div class="col-auto">
-              <label for="listStatus" class="form-label">Status</label>
-              <select id="listStatus" class="form-select">
-                <option value="all">Todas</option>
-                <option value="pending">Pendentes</option>
-                <option value="approved">Aprovadas</option>
-                <option value="scheduled">Agendadas</option>
-                <option value="history">Histórico</option>
-              </select>
-            </div>
-            <div class="col-auto">
-              <button onclick="listPosts()" class="btn btn-rb">Listar</button>
-            </div>
-          </div>
-          <pre id="listPostsResult" class="mt-3"></pre>
         </div>
       </div>
-
-      <!-- TAB 2: APROVAR / EDITAR -->
-      <div class="tab-pane fade" id="pills-approve" role="tabpanel" aria-labelledby="pills-approve-tab">
-        <div class="rb-card p-4 mb-4">
-          <h3 class="mb-3">Aprovar ou Rejeitar Post Pendente</h3>
-          <form id="formApprovePost" class="row gy-3 align-items-end">
-            <div class="col-auto">
-              <label class="form-label">Nº da Postagem (Ex: 1 = primeira pendente)</label>
-              <input type="number" class="form-control" id="approveIndex" min="1" value="1">
-            </div>
-            <div class="col-auto">
-              <label class="form-label">Aprovar?</label>
-              <select id="approveSelect" class="form-select">
-                <option value="true">Sim</option>
-                <option value="false">Não</option>
-              </select>
-            </div>
-            <div class="col-auto">
-              <label class="form-label">Novo horário (opcional)</label>
-              <input type="text" class="form-control" id="approveNewTime" placeholder="HH:MM ou 'now'">
-            </div>
-            <div class="col-auto">
-              <button type="submit" class="btn btn-rb">Aprovar/Rejeitar</button>
-            </div>
-          </form>
-          <div id="approveResult" class="mt-2 text-secondary"></div>
-        </div>
-
-        <div class="rb-card p-4">
-          <h3 class="mb-3">Editar Postagem</h3>
-          <form id="formEditPost" class="row gy-3 align-items-end">
-            <div class="col-auto">
-              <label class="form-label">Nº da Postagem</label>
-              <input type="number" class="form-control" id="editIndex" min="1" value="1">
-            </div>
-            <div class="col-auto">
-              <label class="form-label">Status atual</label>
-              <select id="editStatus" class="form-select">
-                <option value="pending">Pendente</option>
-                <option value="approved">Aprovada</option>
-                <option value="scheduled">Agendada</option>
-              </select>
-            </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label">Novo texto (opcional)</label>
-              <input type="text" class="form-control" id="editNewText">
-            </div>
-            <div class="col-12 col-md-4">
-              <label class="form-label">Novo horário (opcional)</label>
-              <input type="text" class="form-control" id="editNewTime">
-            </div>
-            <div class="col-12">
-              <button type="submit" class="btn btn-rb">Editar</button>
-            </div>
-          </form>
-          <div id="editResult" class="mt-2 text-secondary"></div>
-        </div>
-      </div>
-
-      <!-- TAB 3: DELETAR / AGENDAR -->
-      <div class="tab-pane fade" id="pills-delete" role="tabpanel" aria-labelledby="pills-delete-tab">
-        <div class="rb-card p-4 mb-4">
-          <h3 class="mb-3">Deletar Postagem</h3>
-          <form id="formDeletePost" class="row gy-3 align-items-end">
-            <div class="col-auto">
-              <label class="form-label">Nº da Postagem</label>
-              <input type="number" class="form-control" id="deleteIndex" min="1" value="1">
-            </div>
-            <div class="col-auto">
-              <label class="form-label">Status</label>
-              <select id="deleteStatus" class="form-select">
-                <option value="pending">Pendente</option>
-                <option value="approved">Aprovada</option>
-                <option value="scheduled">Agendada</option>
-              </select>
-            </div>
-            <div class="col-auto">
-              <button type="submit" class="btn btn-danger">Deletar</button>
-            </div>
-          </form>
-          <div id="deleteResult" class="mt-2 text-secondary"></div>
-        </div>
-
-        <div class="rb-card p-4">
-          <h3 class="mb-3">Agendar Post Aprovado</h3>
-          <form id="formSchedulePost" class="row gy-3 align-items-end">
-            <div class="col-auto">
-              <label class="form-label">Nº da Postagem (em 'approved')</label>
-              <input type="number" class="form-control" id="scheduleIndex" min="1" value="1">
-            </div>
-            <div class="col-auto">
-              <label class="form-label">Agendar?</label>
-              <select id="scheduleBool" class="form-select">
-                <option value="true">Sim</option>
-                <option value="false">Remover agendamento</option>
-              </select>
-            </div>
-            <div class="col-auto">
-              <button type="submit" class="btn btn-rb">Confirmar</button>
-            </div>
-          </form>
-          <div id="scheduleResult" class="mt-2 text-secondary"></div>
-        </div>
-      </div>
-
-      <!-- TAB 4: ESTATÍSTICAS -->
-      <div class="tab-pane fade" id="pills-stats" role="tabpanel" aria-labelledby="pills-stats-tab">
-        <div class="rb-card p-4">
-          <h3 class="mb-3">Estatísticas Gerais</h3>
-          <p>Exibe quantos posts existem em cada status e quantos foram postados hoje.</p>
-          <button class="btn btn-rb mb-3" onclick="getStats()">Ver Estatísticas</button>
-          <pre id="statsResult"></pre>
-        </div>
-      </div>
-
     </div>
   </div>
 
   <!-- Bootstrap 5 (JS) -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
+  <!-- Scripts do BotX -->
   <script>
-    // -------------------------------------------------
-    //    Atualiza pré-visualização de texto ao digitar
-    // -------------------------------------------------
-    const createTextInput = document.getElementById('createText');
-    const createPreview = document.getElementById('createPreview');
-
-    function updatePreview() {
-      const text = createTextInput.value;
-      createPreview.textContent = text;  // exibe com quebras de linha
+    // =============================================================================
+    // Configurações e Constantes
+    // =============================================================================
+    const MAX_TWEET_LENGTH = 280;
+    const API_ENDPOINTS = {
+      createPost: '/api/create_post',
+      listPosts: '/api/list_posts',
+      approvePost: '/api/approve_post',
+      editPost: '/api/edit_post',
+      deletePost: '/api/delete_post',
+      schedulePost: '/api/schedule_post',
+      getStats: '/api/get_stats',
+      getTrends: '/api/trends',
+      getHealth: '/api/health'
+    };
+    
+    // =============================================================================
+    // Funções de Utilidade
+    // =============================================================================
+    
+    /**
+     * Exibe uma mensagem em um contêiner específico
+     */
+    function showMessage(containerId, message, type = 'info') {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      
+      container.textContent = message;
+      container.className = `message-box ${type}`;
+      container.style.display = 'block';
+      
+      // Esconde a mensagem após 5 segundos
+      setTimeout(() => {
+        container.style.display = 'none';
+      }, 5000);
     }
-    createTextInput.addEventListener('input', updatePreview);
-
-
-    // -------------------------------------------------
-    //           Funções de Chamada à API
-    // -------------------------------------------------
-
-    // 1) CRIAR POST
-    document.getElementById('formCreatePost').addEventListener('submit', function(e){
-      e.preventDefault();
-      const text = createTextInput.value.trim();
-      const time = document.getElementById('createTime').value.trim();
-      fetch('/api/create_post', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ text, time })
-      })
-      .then(r => r.json())
-      .then(data => {
-        document.getElementById('createPostResult').textContent = data.message;
-      })
-      .catch(err => {
-        console.error(err);
-        document.getElementById('createPostResult').textContent = 'Erro ao criar post.';
-      });
-    });
-
-    // 2) LISTAR POSTS
-    function listPosts() {
-      const status = document.getElementById('listStatus').value;
-      fetch('/api/list_posts?status=' + status)
-        .then(r => r.json())
+    
+    /**
+     * Formata um número para exibição
+     */
+    function formatNumber(num) {
+      if (num === undefined || num === null) return '-';
+      return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    }
+    
+    /**
+     * Atualiza as estatísticas rápidas no topo da página
+     */
+    function updateQuickStats() {
+      fetch(API_ENDPOINTS.getStats)
+        .then(response => response.json())
         .then(data => {
-          if (data.posts) {
-            document.getElementById('listPostsResult').textContent = data.posts.join('\n');
-          } else {
-            document.getElementById('listPostsResult').textContent = 'Nenhum resultado.';
+          document.getElementById('statsPending').textContent = formatNumber(data.total_pending);
+          document.getElementById('statsApproved').textContent = formatNumber(data.total_approved);
+          document.getElementById('statsScheduled').textContent = formatNumber(data.total_scheduled);
+          document.getElementById('statsToday').textContent = formatNumber(data.posts_today);
+        })
+        .catch(error => {
+          console.error('Erro ao carregar estatísticas:', error);
+        });
+    }
+    
+    /**
+     * Atualiza as tendências
+     */
+    function updateTrends() {
+      const trendsContainer = document.getElementById('trendsContainer');
+      const trendsLoader = document.getElementById('trendsLoader');
+      const trendsMessage = document.getElementById('trendsMessage');
+      
+      trendsContainer.innerHTML = '';
+      trendsLoader.style.display = 'flex';
+      
+      fetch(API_ENDPOINTS.getTrends)
+        .then(response => response.json())
+        .then(data => {
+          trendsLoader.style.display = 'none';
+          
+          if (!data.success || !data.trends || data.trends.length === 0) {
+            trendsContainer.innerHTML = '<div class="text-center text-muted">Nenhuma tendência disponível</div>';
+            return;
+          }
+          
+          data.trends.forEach(trend => {
+            const trendItem = document.createElement('div');
+            trendItem.className = 'trend-item';
+            trendItem.innerHTML = `
+              <div class="d-flex justify-content-between align-items-center">
+                <div><strong>${trend.name}</strong></div>
+                <div class="small text-muted">${trend.volume ? formatNumber(trend.volume) : '-'}</div>
+              </div>
+            `;
+            
+            // Adiciona funcionalidade para clicar na tendência e adicioná-la ao texto
+            trendItem.addEventListener('click', () => {
+              const postText = document.getElementById('postText');
+              postText.value += ' ' + trend.name;
+              postText.dispatchEvent(new Event('input')); // Aciona evento para atualizar contador e preview
+            });
+            
+            trendsContainer.appendChild(trendItem);
+          });
+          
+          // Atualiza a mensagem com a data de última atualização
+          if (data.last_updated) {
+            const lastUpdated = new Date(data.last_updated);
+            trendsMessage.textContent = `Atualizado em: ${lastUpdated.toLocaleString()}`;
           }
         })
-        .catch(err => {
-          console.error(err);
-          document.getElementById('listPostsResult').textContent = 'Erro ao listar.';
+        .catch(error => {
+          trendsLoader.style.display = 'none';
+          trendsContainer.innerHTML = '<div class="text-center text-danger">Erro ao carregar tendências</div>';
+          console.error('Erro ao carregar tendências:', error);
         });
     }
-
-    // 3) APROVAR/REJEITAR POST
-    document.getElementById('formApprovePost').addEventListener('submit', function(e){
-      e.preventDefault();
-      const index = parseInt(document.getElementById('approveIndex').value) - 1;
-      const approve = (document.getElementById('approveSelect').value === 'true');
-      const new_time = document.getElementById('approveNewTime').value || null;
-
-      fetch('/api/approve_post', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ index, approve, new_time })
-      })
-      .then(r => r.json())
-      .then(data => {
-        document.getElementById('approveResult').textContent = data.message;
-      })
-      .catch(err => {
-        console.error(err);
-        document.getElementById('approveResult').textContent = 'Erro ao aprovar/rejeitar.';
-      });
-    });
-
-    // 4) EDITAR POST
-    document.getElementById('formEditPost').addEventListener('submit', function(e){
-      e.preventDefault();
-      const index = parseInt(document.getElementById('editIndex').value) - 1;
-      const status = document.getElementById('editStatus').value;
-      const new_text = document.getElementById('editNewText').value.trim() || null;
-      const new_time = document.getElementById('editNewTime').value.trim() || null;
-
-      fetch('/api/edit_post', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ index, status, new_text, new_time })
-      })
-      .then(r => r.json())
-      .then(data => {
-        document.getElementById('editResult').textContent = data.message;
-      })
-      .catch(err => {
-        console.error(err);
-        document.getElementById('editResult').textContent = 'Erro ao editar.';
-      });
-    });
-
-    // 5) DELETAR POST
-    document.getElementById('formDeletePost').addEventListener('submit', function(e){
-      e.preventDefault();
-      const index = parseInt(document.getElementById('deleteIndex').value) - 1;
-      const status = document.getElementById('deleteStatus').value;
-
-      fetch('/api/delete_post', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ index, status })
-      })
-      .then(r => r.json())
-      .then(data => {
-        document.getElementById('deleteResult').textContent = data.message;
-      })
-      .catch(err => {
-        console.error(err);
-        document.getElementById('deleteResult').textContent = 'Erro ao deletar.';
-      });
-    });
-
-    // 6) AGENDAR POST
-    document.getElementById('formSchedulePost').addEventListener('submit', function(e){
-      e.preventDefault();
-      const index = parseInt(document.getElementById('scheduleIndex').value) - 1;
-      const scheduled = (document.getElementById('scheduleBool').value === 'true');
-
-      fetch('/api/schedule_post', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ index, scheduled })
-      })
-      .then(r => r.json())
-      .then(data => {
-        document.getElementById('scheduleResult').textContent = data.message;
-      })
-      .catch(err => {
-        console.error(err);
-        document.getElementById('scheduleResult').textContent = 'Erro ao agendar.';
-      });
-    });
-
-    // 7) ESTATÍSTICAS
-    function getStats() {
-      fetch('/api/get_stats')
-        .then(r => r.json())
+    
+    /**
+     * Atualiza a lista de posts
+     */
+    function updatePostsList(status = 'all', containerId = 'postsListContainer', loaderId = 'postsListLoader') {
+      const container = document.getElementById(containerId);
+      const loader = document.getElementById(loaderId);
+      
+      if (!container || !loader) return;
+      
+      container.innerHTML = '';
+      loader.style.display = 'flex';
+      
+      fetch(`${API_ENDPOINTS.listPosts}?status=${status}`)
+        .then(response => response.json())
         .then(data => {
-          const txt = JSON.stringify(data, null, 2);
-          document.getElementById('statsResult').textContent = txt;
+          loader.style.display = 'none';
+          
+          if (!data.success || !data.posts || data.posts.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted p-3">Nenhuma postagem encontrada</div>';
+            return;
+          }
+          
+          data.posts.forEach((post, index) => {
+            // Extrai algumas informações básicas do texto do post
+            // Exemplo: "Pending #1 [ID:12345abc]: Texto do post | Horário: 15:30"
+            const postInfo = parsePostInfo(post, index + 1);
+            
+            const postItem = document.createElement('div');
+            postItem.className = 'post-item';
+            
+            let statusClass = 'bg-secondary';
+            if (postInfo.status.toLowerCase() === 'pending') statusClass = 'bg-pending';
+            if (postInfo.status.toLowerCase() === 'approved') statusClass = 'bg-approved';
+            if (postInfo.status.toLowerCase() === 'scheduled') statusClass = 'bg-scheduled';
+            if (postInfo.status.toLowerCase() === 'posted') statusClass = 'bg-posted';
+            
+            postItem.innerHTML = `
+              <div class="d-flex justify-content-between align-items-start mb-1">
+                <div>
+                  <span class="badge ${statusClass} me-1">${postInfo.status}</span>
+                  <span class="small text-muted">#${postInfo.index} [ID:${postInfo.id}]</span>
+                </div>
+                <span class="small text-muted">${postInfo.time}</span>
+              </div>
+              <div>${postInfo.text}</div>
+            `;
+            
+            container.appendChild(postItem);
+          });
         })
-        .catch(err => {
-          console.error(err);
-          document.getElementById('statsResult').textContent = 'Erro ao obter estatísticas.';
+        .catch(error => {
+          loader.style.display = 'none';
+          container.innerHTML = '<div class="text-center text-danger p-3">Erro ao carregar postagens</div>';
+          console.error('Erro ao carregar postagens:', error);
         });
     }
-
-    // Atualiza preview no carregamento (inicialmente vazio):
-    updatePreview();
+    
+    /**
+     * Analisa informações do post a partir do texto formatado
+     */
+    function parsePostInfo(postText, index) {
+      // Padrão: "Status #N [ID:abcdef]: Text | Horário: 15:30"
+      const result = {
+        index: index,
+        status: 'Unknown',
+        id: 'N/A',
+        text: '',
+        time: 'N/A'
+      };
+      
+      try {
+        // Divide por espaços e extrai o status
+        const parts = postText.split(' ');
+        if (parts.length > 0) {
+          result.status = parts[0];
+        }
+        
+        // Extrai o ID
+        const idMatch = postText.match(/\[ID:([^\]]+)\]/);
+        if (idMatch && idMatch[1]) {
+          result.id = idMatch[1];
+        }
+        
+        // Extrai o texto e o horário
+        const textMatch = postText.match(/\]: (.+?) \|/);
+        if (textMatch && textMatch[1]) {
+          result.text = textMatch[1];
+        }
+        
+        // Extrai o horário
+        const timeMatch = postText.match(/Horário: ([^ ]+)/);
+        if (timeMatch && timeMatch[1]) {
+          result.time = timeMatch[1];
+        } else {
+          // Tenta outros padrões
+          const createdMatch = postText.match(/Criado: ([^|]+)/);
+          if (createdMatch && createdMatch[1]) {
+            result.time = createdMatch[1].trim();
+          }
+          
+          const approvedMatch = postText.match(/Aprovado: ([^|]+)/);
+          if (approvedMatch && approvedMatch[1]) {
+            result.time = approvedMatch[1].trim();
+          }
+          
+          const scheduledMatch = postText.match(/Agendado: ([^|]+)/);
+          if (scheduledMatch && scheduledMatch[1]) {
+            result.time = scheduledMatch[1].trim();
+          }
+          
+          const postedMatch = postText.match(/Publicado: ([^|]+)/);
+          if (postedMatch && postedMatch[1]) {
+            result.time = postedMatch[1].trim();
+          }
+        }
+      } catch (e) {
+        console.error('Erro ao analisar post:', e);
+      }
+      
+      return result;
+    }
+    
+    /**
+     * Atualiza as estatísticas detalhadas
+     */
+    function updateDetailedStats() {
+      const container = document.getElementById('detailedStatsContainer');
+      const loader = document.getElementById('detailedStatsLoader');
+      
+      container.innerHTML = '';
+      loader.style.display = 'flex';
+      
+      fetch(API_ENDPOINTS.getStats)
+        .then(response => response.json())
+        .then(data => {
+          loader.style.display = 'none';
+          
+          let html = '<div class="row g-4">';
+          
+          // Posts por status
+          html += `
+            <div class="col-md-6">
+              <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                  <h6 class="card-title"><i class="bi bi-layers"></i> Posts por Status</h6>
+                  <table class="table table-sm">
+                    <tbody>
+                      <tr>
+                        <td>Pendentes</td>
+                        <td class="text-end">${formatNumber(data.total_pending)}</td>
+                      </tr>
+                      <tr>
+                        <td>Aprovados</td>
+                        <td class="text-end">${formatNumber(data.total_approved)}</td>
+                      </tr>
+                      <tr>
+                        <td>Agendados</td>
+                        <td class="text-end">${formatNumber(data.total_scheduled)}</td>
+                      </tr>
+                      <tr>
+                        <td>Publicados</td>
+                        <td class="text-end">${formatNumber(data.total_posted)}</td>
+                      </tr>
+                      <tr class="table-active">
+                        <td><strong>Total</strong></td>
+                        <td class="text-end"><strong>${formatNumber(data.total_all)}</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>`;
+          
+          // Métricas de período
+          html += `
+            <div class="col-md-6">
+              <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                  <h6 class="card-title"><i class="bi bi-calendar3"></i> Métricas de Período</h6>
+                  <table class="table table-sm">
+                    <tbody>
+                      <tr>
+                        <td>Posts Hoje</td>
+                        <td class="text-end">${formatNumber(data.posts_today)}</td>
+                      </tr>
+                      <tr>
+                        <td>Posts Este Mês</td>
+                        <td class="text-end">${formatNumber(data.posts_this_month)}</td>
+                      </tr>`;
+          
+          // Adiciona informações da sessão atual se disponíveis
+          if (data.current_session) {
+            html += `
+                      <tr>
+                        <td>Posts Nesta Sessão</td>
+                        <td class="text-end">${formatNumber(data.current_session.daily_posts)}</td>
+                      </tr>`;
+          }
+          
+          html += `
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>`;
+          
+          // Informações de scheduler se disponíveis
+          if (data.scheduler) {
+            html += `
+            <div class="col-12">
+              <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                  <h6 class="card-title"><i class="bi bi-clock"></i> Informações do Scheduler</h6>
+                  <div class="row align-items-center">
+                    <div class="col-md-4">
+                      <div class="text-center mb-3">
+                        <div class="display-4">
+                          <i class="bi bi-${data.scheduler.running ? 'check-circle-fill text-success' : 'x-circle-fill text-danger'}"></i>
+                        </div>
+                        <p class="mb-0">Scheduler ${data.scheduler.running ? 'Ativo' : 'Inativo'}</p>
+                      </div>
+                    </div>
+                    <div class="col-md-8">
+                      <p class="mb-2"><strong>Tarefas agendadas:</strong> ${data.scheduler.jobs_count || 0}</p>
+                      <div class="bg-light p-2 rounded" style="max-height: 150px; overflow-y: auto;">`;
+            
+            if (data.scheduler.jobs && data.scheduler.jobs.length > 0) {
+              data.scheduler.jobs.forEach(job => {
+                html += `<div class="small mb-1">
+                  <i class="bi bi-${job.type === 'scheduled_post' ? 'send' : 'gear'}"></i>
+                  ${job.id}: ${job.next_run}
+                </div>`;
+              });
+            } else {
+              html += `<div class="text-center text-muted small">Nenhuma tarefa agendada</div>`;
+            }
+            
+            html += `
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+          }
+          
+          html += '</div>';
+          container.innerHTML = html;
+          
+          // Atualiza também as tarefas agendadas na coluna lateral
+          updateScheduledTasks(data);
+        })
+        .catch(error => {
+          loader.style.display = 'none';
+          container.innerHTML = '<div class="alert alert-danger">Erro ao carregar estatísticas</div>';
+          console.error('Erro ao carregar estatísticas:', error);
+        });
+    }
+    
+    /**
+     * Atualiza a lista de tarefas agendadas no painel lateral
+     */
+    function updateScheduledTasks(statsData) {
+      const container = document.getElementById('scheduledTasksContainer');
+      if (!container) return;
+      
+      if (!statsData.scheduler || !statsData.scheduler.jobs || statsData.scheduler.jobs.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted small">Nenhuma tarefa agendada</div>';
+        return;
+      }
+      
+      let html = '<ul class="list-unstyled small mb-0">';
+      
+      // Filtra apenas tarefas de post
+      const postJobs = statsData.scheduler.jobs.filter(job => job.type === 'scheduled_post');
+      
+      if (postJobs.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted small">Nenhuma postagem agendada</div>';
+        return;
+      }
+      
+      postJobs.forEach(job => {
+        const jobId = job.id.replace('post_', '');
+        html += `<li class="mb-1">
+          <i class="bi bi-clock-fill text-primary"></i>
+          ID: ${jobId.substring(0, 8)}... às ${job.next_run.substring(11, 16)}
+        </li>`;
+      });
+      
+      html += '</ul>';
+      container.innerHTML = html;
+    }
+    
+    /**
+     * Atualiza as informações do sistema
+     */
+    function updateSystemStatus() {
+      const container = document.getElementById('systemStatusContainer');
+      const loader = document.getElementById('systemStatusLoader');
+      
+      if (!container || !loader) return;
+      
+      loader.style.display = 'flex';
+      
+      fetch(API_ENDPOINTS.getHealth)
+        .then(response => response.json())
+        .then(data => {
+          loader.style.display = 'none';
+          
+          // Status do bot
+          const botStatusEl = document.getElementById('botStatus');
+          if (data.bot && data.bot.status === 'online') {
+            botStatusEl.textContent = 'Online';
+            botStatusEl.className = 'badge bg-success';
+          } else {
+            botStatusEl.textContent = 'Offline';
+            botStatusEl.className = 'badge bg-danger';
+          }
+          
+          // Status do scheduler
+          const schedulerStatusEl = document.getElementById('schedulerStatus');
+          if (data.bot && data.bot.scheduler_running) {
+            schedulerStatusEl.textContent = 'Ativo';
+            schedulerStatusEl.className = 'badge bg-success';
+          } else {
+            schedulerStatusEl.textContent = 'Inativo';
+            schedulerStatusEl.className = 'badge bg-warning';
+          }
+          
+          // Modo do servidor
+          const serverModeEl = document.getElementById('serverMode');
+          if (data.bot && data.bot.status === 'online') {
+            serverModeEl.textContent = 'Completo (bot ativo)';
+          } else {
+            serverModeEl.textContent = 'Standalone (limitado)';
+          }
+          
+          // Status da API
+          const apiStatusEl = document.getElementById('apiStatus');
+          if (data.bot && data.bot.api_status) {
+            apiStatusEl.textContent = 'Conectada';
+            apiStatusEl.className = 'badge bg-success';
+          } else {
+            apiStatusEl.textContent = 'Desconectada';
+            apiStatusEl.className = 'badge bg-danger';
+          }
+        })
+        .catch(error => {
+          loader.style.display = 'none';
+          console.error('Erro ao carregar status do sistema:', error);
+          
+          // Em caso de erro, assume que está no modo standalone
+          document.getElementById('botStatus').textContent = 'Desconectado';
+          document.getElementById('botStatus').className = 'badge bg-warning';
+          document.getElementById('schedulerStatus').textContent = 'Indisponível';
+          document.getElementById('schedulerStatus').className = 'badge bg-secondary';
+          document.getElementById('serverMode').textContent = 'Standalone (limitado)';
+          document.getElementById('apiStatus').textContent = 'Desconhecido';
+          document.getElementById('apiStatus').className = 'badge bg-secondary';
+        });
+    }
+    
+    // =============================================================================
+    // Event Handlers e Inicialização
+    // =============================================================================
+    
+    // Contador de caracteres e pré-visualização
+    const postTextArea = document.getElementById('postText');
+    const charCounter = document.getElementById('charCounter');
+    const postPreview = document.getElementById('postPreview');
+    
+    if (postTextArea && charCounter && postPreview) {
+      postTextArea.addEventListener('input', () => {
+        const text = postTextArea.value;
+        const charCount = text.length;
+        
+        // Atualiza contador de caracteres
+        charCounter.textContent = `${charCount}/${MAX_TWEET_LENGTH} caracteres`;
+        
+        // Muda a cor do contador dependendo do comprimento
+        if (charCount > MAX_TWEET_LENGTH * 0.9) {
+          charCounter.className = 'char-counter danger';
+        } else if (charCount > MAX_TWEET_LENGTH * 0.8) {
+          charCounter.className = 'char-counter warning';
+        } else {
+          charCounter.className = 'char-counter';
+        }
+        
+        // Atualiza pré-visualização
+        postPreview.textContent = text;
+      });
+    }
+    
+    // Limpar formulário de criar postagem
+    const clearTextBtn = document.getElementById('clearTextBtn');
+    if (clearTextBtn) {
+      clearTextBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (postTextArea) {
+          postTextArea.value = '';
+          postTextArea.dispatchEvent(new Event('input'));
+        }
+      });
+    }
+    
+    // Reset completo do formulário de criar postagem
+    const createResetBtn = document.getElementById('createResetBtn');
+    if (createResetBtn) {
+      createResetBtn.addEventListener('click', () => {
+        if (postTextArea) {
+          postTextArea.value = '';
+          postTextArea.dispatchEvent(new Event('input'));
+        }
+        
+        const postTimeInput = document.getElementById('postTime');
+        if (postTimeInput) {
+          postTimeInput.value = 'now';
+        }
+        
+        const autoApproveCheck = document.getElementById('autoApproveCheck');
+        if (autoApproveCheck) {
+          autoApproveCheck.checked = false;
+        }
+      });
+    }
+    
+    // Formulário de criar postagem
+    const createPostForm = document.getElementById('createPostForm');
+    if (createPostForm) {
+      createPostForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const text = postTextArea ? postTextArea.value.trim() : '';
+        const time = document.getElementById('postTime') ? document.getElementById('postTime').value.trim() : 'now';
+        const autoApprove = document.getElementById('autoApproveCheck') ? document.getElementById('autoApproveCheck').checked : false;
+        
+        if (!text) {
+          showMessage('createPostMessage', 'O texto da postagem não pode estar vazio', 'error');
+          return;
+        }
+        
+        // Validação de horário
+        if (time !== 'now') {
+          const timePattern = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+          if (!timePattern.test(time)) {
+            showMessage('createPostMessage', 'Formato de horário inválido. Use HH:MM ou "now"', 'error');
+            return;
+          }
+        }
+        
+        // Envia a requisição para criar o post
+        fetch(API_ENDPOINTS.createPost, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, time })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            showMessage('createPostMessage', data.message, 'success');
+            
+            // Limpa o formulário após sucesso
+            if (postTextArea) {
+              postTextArea.value = '';
+              postTextArea.dispatchEvent(new Event('input'));
+            }
+            document.getElementById('postTime').value = 'now';
+            
+            // Se o auto-aprovar estiver marcado e tivermos o ID do post, aprova automaticamente
+            if (autoApprove && data.post && data.post.id) {
+              // Implementar auto-aprovação aqui
+              // ...
+            }
+            
+            // Atualiza estatísticas
+            updateQuickStats();
+          } else {
+            showMessage('createPostMessage', data.message || 'Erro ao criar postagem', 'error');
+          }
+        })
+        .catch(error => {
+          console.error('Erro ao criar postagem:', error);
+          showMessage('createPostMessage', 'Erro ao criar postagem. Verifique o console para mais detalhes.', 'error');
+        });
+      });
+    }
+    
+    // Filtro de status para listagem de posts
+    const postsStatusFilter = document.getElementById('postsStatusFilter');
+    if (postsStatusFilter) {
+      postsStatusFilter.addEventListener('change', () => {
+        updatePostsList(postsStatusFilter.value);
+      });
+    }
+    
+    // Botão de atualizar posts
+    const refreshPostsBtn = document.getElementById('refreshPosts');
+    if (refreshPostsBtn) {
+      refreshPostsBtn.addEventListener('click', () => {
+        const status = postsStatusFilter ? postsStatusFilter.value : 'all';
+        updatePostsList(status);
+      });
+    }
+    
+    // Botão de atualizar tendências
+    const refreshTrendsBtn = document.getElementById('refreshTrends');
+    if (refreshTrendsBtn) {
+      refreshTrendsBtn.addEventListener('click', () => {
+        updateTrends();
+      });
+    }
+    
+    // Botão de atualizar estatísticas
+    const refreshStatsBtn = document.getElementById('refreshStats');
+    if (refreshStatsBtn) {
+      refreshStatsBtn.addEventListener('click', () => {
+        updateQuickStats();
+        
+        // Se estamos na aba de estatísticas, atualiza também as detalhadas
+        if (document.getElementById('stats').classList.contains('active')) {
+          updateDetailedStats();
+          updateSystemStatus();
+        }
+      });
+    }
+    
+    // Botão de refresh estatísticas detalhadas
+    const refreshDetailedStatsBtn = document.getElementById('refreshDetailedStats');
+    if (refreshDetailedStatsBtn) {
+      refreshDetailedStatsBtn.addEventListener('click', () => {
+        updateDetailedStats();
+      });
+    }
+    
+    // Formulário de aprovar/rejeitar post
+    const approvePostForm = document.getElementById('approvePostForm');
+    if (approvePostForm) {
+      approvePostForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const index = document.getElementById('approveIndex') ? parseInt(document.getElementById('approveIndex').value) - 1 : 0;
+        const approve = document.getElementById('approveAction') ? document.getElementById('approveAction').value === 'true' : true;
+        const newTime = document.getElementById('approveNewTime') ? document.getElementById('approveNewTime').value.trim() : null;
+        
+        // Validação de horário
+        if (newTime && newTime !== 'now') {
+          const timePattern = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+          if (!timePattern.test(newTime)) {
+            showMessage('managePostsMessage', 'Formato de horário inválido. Use HH:MM ou "now"', 'error');
+            return;
+          }
+        }
+        
+        fetch(API_ENDPOINTS.approvePost, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            index,
+            approve,
+            new_time: newTime && newTime.length > 0 ? newTime : null
+          })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            showMessage('managePostsMessage', data.message, 'success');
+            
+            // Atualiza a lista de posts
+            updatePostsList('pending');
+            
+            // Atualiza estatísticas
+            updateQuickStats();
+            
+            // Limpa o campo de novo horário
+            if (document.getElementById('approveNewTime')) {
+              document.getElementById('approveNewTime').value = '';
+            }
+          } else {
+            showMessage('managePostsMessage', data.message || 'Erro ao aprovar/rejeitar postagem', 'error');
+          }
+        })
+        .catch(error => {
+          console.error('Erro ao aprovar/rejeitar postagem:', error);
+          showMessage('managePostsMessage', 'Erro ao aprovar/rejeitar postagem. Verifique o console para mais detalhes.', 'error');
+        });
+      });
+    }
+    
+    // Formulário de editar post
+    const editPostForm = document.getElementById('editPostForm');
+    if (editPostForm) {
+      editPostForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const index = document.getElementById('editIndex') ? parseInt(document.getElementById('editIndex').value) - 1 : 0;
+        const status = document.getElementById('editStatus') ? document.getElementById('editStatus').value : 'pending';
+        const newText = document.getElementById('editNewText') ? document.getElementById('editNewText').value.trim() : null;
+        const newTime = document.getElementById('editNewTime') ? document.getElementById('editNewTime').value.trim() : null;
+        
+        // Validações
+        if (newText !== null && newText.length === 0) {
+          showMessage('managePostsMessage', 'O texto da postagem não pode estar vazio', 'error');
+          return;
+        }
+        
+        if (newTime && newTime !== 'now') {
+          const timePattern = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+          if (!timePattern.test(newTime)) {
+            showMessage('managePostsMessage', 'Formato de horário inválido. Use HH:MM ou "now"', 'error');
+            return;
+          }
+        }
+        
+        // Verifica se pelo menos um campo foi preenchido
+        if (newText === null && newTime === null) {
+          showMessage('managePostsMessage', 'Preencha pelo menos um campo para editar', 'error');
+          return;
+        }
+        
+        fetch(API_ENDPOINTS.editPost, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            index,
+            status,
+            new_text: newText,
+            new_time: newTime
+          })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            showMessage('managePostsMessage', data.message, 'success');
+            
+            // Atualiza a lista de posts
+            updatePostsList(status);
+            
+            // Limpa os campos
+            if (document.getElementById('editNewText')) {
+              document.getElementById('editNewText').value = '';
+            }
+            if (document.getElementById('editNewTime')) {
+              document.getElementById('editNewTime').value = '';
+            }
+          } else {
+            showMessage('managePostsMessage', data.message || 'Erro ao editar postagem', 'error');
+          }
+        })
+        .catch(error => {
+          console.error('Erro ao editar postagem:', error);
+          showMessage('managePostsMessage', 'Erro ao editar postagem. Verifique o console para mais detalhes.', 'error');
+        });
+      });
+    }
+    
+    // Botão de excluir post
+    const deletePostBtn = document.getElementById('deletePostBtn');
+    if (deletePostBtn) {
+      deletePostBtn.addEventListener('click', () => {
+        const index = document.getElementById('editIndex') ? parseInt(document.getElementById('editIndex').value) - 1 : 0;
+        const status = document.getElementById('editStatus') ? document.getElementById('editStatus').value : 'pending';
+        
+        // Confirma a exclusão
+        if (!confirm(`Tem certeza que deseja excluir a postagem #${index + 1} do status "${status}"?`)) {
+          return;
+        }
+        
+        fetch(API_ENDPOINTS.deletePost, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            index,
+            status
+          })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            showMessage('managePostsMessage', data.message, 'success');
+            
+            // Atualiza a lista de posts
+            updatePostsList(status);
+            
+            // Atualiza estatísticas
+            updateQuickStats();
+          } else {
+            showMessage('managePostsMessage', data.message || 'Erro ao excluir postagem', 'error');
+          }
+        })
+        .catch(error => {
+          console.error('Erro ao excluir postagem:', error);
+          showMessage('managePostsMessage', 'Erro ao excluir postagem. Verifique o console para mais detalhes.', 'error');
+        });
+      });
+    }
+    
+    // Botões de atualizar listas específicas
+    const refreshApprovedPostsBtn = document.getElementById('refreshApprovedPosts');
+    if (refreshApprovedPostsBtn) {
+      refreshApprovedPostsBtn.addEventListener('click', () => {
+        updatePostsList('approved', 'approvedListContainer', 'approvedListLoader');
+      });
+    }
+    
+    const refreshScheduledPostsBtn = document.getElementById('refreshScheduledPosts');
+    if (refreshScheduledPostsBtn) {
+      refreshScheduledPostsBtn.addEventListener('click', () => {
+        updatePostsList('scheduled', 'scheduledListContainer', 'scheduledListLoader');
+      });
+    }
+    
+    const refreshHistoryBtn = document.getElementById('refreshHistory');
+    if (refreshHistoryBtn) {
+      refreshHistoryBtn.addEventListener('click', () => {
+        updatePostsList('history', 'historyContainer', 'historyLoader');
+      });
+    }
+    
+    // Formulário de agendar/desagendar post
+    const schedulePostForm = document.getElementById('schedulePostForm');
+    if (schedulePostForm) {
+      schedulePostForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const index = document.getElementById('scheduleIndex') ? parseInt(document.getElementById('scheduleIndex').value) - 1 : 0;
+        const scheduled = document.getElementById('scheduleAction') ? document.getElementById('scheduleAction').value === 'true' : true;
+        
+        fetch(API_ENDPOINTS.schedulePost, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            index,
+            scheduled
+          })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            showMessage('scheduleMessage', data.message, 'success');
+            
+            // Atualiza as listas de posts
+            updatePostsList('approved', 'approvedListContainer', 'approvedListLoader');
+            updatePostsList('scheduled', 'scheduledListContainer', 'scheduledListLoader');
+            
+            // Atualiza estatísticas
+            updateQuickStats();
+          } else {
+            showMessage('scheduleMessage', data.message || 'Erro ao agendar/desagendar postagem', 'error');
+          }
+        })
+        .catch(error => {
+          console.error('Erro ao agendar/desagendar postagem:', error);
+          showMessage('scheduleMessage', 'Erro ao agendar/desagendar postagem. Verifique o console para mais detalhes.', 'error');
+        });
+      });
+    }
+    
+    // Link para modo CLI
+    const openCliLink = document.getElementById('openCliLink');
+    if (openCliLink) {
+      openCliLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        
+        // Alerta com instruções
+        alert('Para usar o BotX em modo CLI, feche esta janela do navegador e execute o comando:\n\npython bot.py');
+      });
+    }
+    
+    // Handlers para mudança de abas
+    document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
+      tab.addEventListener('shown.bs.tab', (e) => {
+        const targetTab = e.target.getAttribute('data-bs-target').replace('#', '');
+        
+        // Ações específicas para cada aba
+        if (targetTab === 'manage') {
+          updatePostsList(document.getElementById('postsStatusFilter').value);
+        } else if (targetTab === 'schedule') {
+          updatePostsList('approved', 'approvedListContainer', 'approvedListLoader');
+          updatePostsList('scheduled', 'scheduledListContainer', 'scheduledListLoader');
+        } else if (targetTab === 'stats') {
+          updateDetailedStats();
+          updateSystemStatus();
+          updatePostsList('history', 'historyContainer', 'historyLoader');
+        }
+      });
+    });
+    
+    // Inicialização
+    document.addEventListener('DOMContentLoaded', () => {
+      // Inicializa as estatísticas rápidas
+      updateQuickStats();
+      
+      // Inicializa as tendências
+      updateTrends();
+      
+      // Inicializa a lista de posts
+      updatePostsList('all');
+      
+      // Verifica o status do sistema
+      updateSystemStatus();
+      
+      // Inicializa o contador de caracteres
+      if (postTextArea) {
+        postTextArea.dispatchEvent(new Event('input'));
+      }
+      
+      console.log('BotX Web Interface iniciada com sucesso!');
+    });
   </script>
 </body>
-</html>
+</html>  </div>
+                  
+                  <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                      <label for="postTime" class="form-label">Horário (HH:MM ou 'now')</label>
+                      <input type="text" class="form-control" id="postTime" value="now" required pattern="^([01]?[0-9]|2[0-3]):[0-5][0-9]$|^now$">
+                      <div class="form-text">Use 'now' para postar assim que aprovado</div>
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label d-block">Opções</label>
+                      <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="autoApproveCheck">
+                        <label class="form-check-label" for="autoApproveCheck">Auto-aprovar</label>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="d-flex justify-content-between">
+                    <button type="submit" class="btn btn-primary">
+                      <i class="bi bi-plus-circle"></i> Criar Postagem
+                    </button>
+                    <button type="button" id="createResetBtn" class="btn btn-outline-secondary">
+                      <i class="bi bi-arrow-counterclockwise"></i> Limpar
+                    </button>
+                  </div>
+                </form>
+                
+                <!-- Pré-visualização -->
+                <div class="mt-4">
+                  <h6><i class="bi bi-eye"></i> Pré-visualização</h6>
+                  <div id="postPreview" class="post-preview"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Coluna da direita: Tendências -->
+          <div class="col-lg-4 mt-4 mt-lg-0">
+            <div class="card">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-graph-up"></i> Tendências</h5>
+                <span class="refresh-btn" id="refreshTrends" title="Atualizar tendências">
+                  <i class="bi bi-arrow-clockwise"></i>
+                </span>
+              </div>
+              <div class="card-body">
+                <div id="trendsLoader" class="spinner-container">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Carregando...</span>
+                  </div>
+                </div>
+                <div id="trendsContainer">
+                  <!-- Trends serão carregadas via JavaScript -->
+                </div>
+                <div id="trendsMessage" class="text-muted small text-center mt-2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Tab 2: Gerenciar Postagens -->
+      <div class="tab-pane fade" id="manage" role="tabpanel">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-list-check"></i> Gerenciar Postagens</h5>
+            <div class="btn-group" role="group">
+              <select id="postsStatusFilter" class="form-select form-select-sm">
+                <option value="all">Todas</option>
+                <option value="pending">Pendentes</option>
+                <option value="approved">Aprovadas</option>
+                <option value="scheduled">Agendadas</option>
+                <option value="history">Histórico</option>
+              </select>
+              <button id="refreshPosts" class="btn btn-sm btn-outline-primary ms-2">
+                <i class="bi bi-arrow-clockwise"></i> Atualizar
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <!-- Alertas de sucesso/erro -->
+            <div id="managePostsMessage" class="message-box"></div>
+            
+            <!-- Lista de posts -->
+            <div id="postsListLoader" class="spinner-container">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Carregando...</span>
+              </div>
+            </div>
+            <div class="list-posts-container">
+              <div id="postsListContainer">
+                <!-- Posts serão carregados via JavaScript -->
+              </div>
+            </div>
+            
+            <!-- Controles de ação -->
+            <div class="row mt-4 g-3">
+              <div class="col-md-6">
+                <div class="card">
+                  <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-check-circle"></i> Aprovar/Rejeitar</h6>
+                  </div>
+                  <div class="card-body">
+                    <form id="approvePostForm">
+                      <div class="mb-3">
+                        <label for="approveIndex" class="form-label">Nº do post pendente</label>
+                        <input type="number" class="form-control" id="approveIndex" min="1" value="1">
+                      </div>
+                      <div class="mb-3">
+                        <label for="approveAction" class="form-label">Ação</label>
+                        <select id="approveAction" class="form-select">
+                          <option value="true">Aprovar</option>
+                          <option value="false">Rejeitar</option>
+                        </select>
+                      </div>
+                      <div class="mb-3">
+                        <label for="approveNewTime" class="form-label">Novo horário (opcional)</label>
+                        <input type="text" class="form-control" id="approveNewTime" placeholder="HH:MM ou 'now'">
+                      </div>
+                      <button type="submit" class="btn btn-primary">Executar</button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="card">
+                  <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-pencil"></i> Editar/Excluir</h6>
+                  </div>
+                  <div class="card-body">
+                    <form id="editPostForm">
+                      <div class="row mb-3">
+                        <div class="col-6">
+                          <label for="editIndex" class="form-label">Nº do post</label>
+                          <input type="number" class="form-control" id="editIndex" min="1" value="1">
+                        </div>
+                        <div class="col-6">
+                          <label for="editStatus" class="form-label">Status</label>
+                          <select id="editStatus" class="form-select">
+                            <option value="pending">Pendente</option>
+                            <option value="approved">Aprovado</option>
+                            <option value="scheduled">Agendado</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="mb-3">
+                        <label for="editNewText" class="form-label">Novo texto (opcional)</label>
+                        <input type="text" class="form-control" id="editNewText" placeholder="Deixe vazio para manter">
+                      </div>
+                      <div class="mb-3">
+                        <label for="editNewTime" class="form-label">Novo horário (opcional)</label>
+                        <input type="text" class="form-control" id="editNewTime" placeholder="HH:MM ou 'now'">
+                      </div>
+                      <div class="d-flex justify-content-between">
+                        <button type="submit" class="btn btn-primary">Editar</button>
+                        <button type="button" id="deletePostBtn" class="btn btn-danger">
+                          <i class="bi bi-trash"></i> Excluir
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Tab 3: Agendar Postagens -->
+      <div class="tab-pane fade" id="schedule" role="tabpanel">
+        <div class="row">
+          <!-- Coluna da esquerda: Lista de aprovados -->
+          <div class="col-lg-7">
+            <div class="card">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-check-circle"></i> Postagens Aprovadas</h5>
+                <button id="refreshApprovedPosts" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-arrow-clockwise"></i> Atualizar
+                </button>
+              </div>
+              <div class="card-body">
+                <div id="approvedListLoader" class="spinner-container">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Carregando...</span>
+                  </div>
+                </div>
+                <div class="list-posts-container mb-3">
+                  <div id="approvedListContainer">
+                    <!-- Approved posts serão carregados via JavaScript -->
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Lista de agendados -->
+            <div class="card mt-4">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-calendar-check"></i> Postagens Agendadas</h5>
+                <button id="refreshScheduledPosts" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-arrow-clockwise"></i> Atualizar
+                </button>
+              </div>
+              <div class="card-body">
+                <div id="scheduledListLoader" class="spinner-container">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Carregando...</span>
+                  </div>
+                </div>
+                <div class="list-posts-container">
+                  <div id="scheduledListContainer">
+                    <!-- Scheduled posts serão carregados via JavaScript -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Coluna da direita: Controles de agendamento -->
+          <div class="col-lg-5 mt-4 mt-lg-0">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-calendar-plus"></i> Agendar Postagem</h5>
+              </div>
+              <div class="card-body">
+                <!-- Alertas de sucesso/erro -->
+                <div id="scheduleMessage" class="message-box"></div>
+                
+                <form id="schedulePostForm">
+                  <div class="mb-3">
+                    <label for="scheduleIndex" class="form-label">Nº do post aprovado</label>
+                    <input type="number" class="form-control" id="scheduleIndex" min="1" value="1">
+                  </div>
+                  <div class="mb-3">
+                    <label for="scheduleAction" class="form-label">Ação</label>
+                    <select id="scheduleAction" class="form-select">
+                      <option value="true">Agendar</option>
+                      <option value="false">Remover agendamento</option>
+                    </select>
+                  </div>
+                  <button type="submit" class="btn btn-primary">Executar agendamento</button>
+                </form>
+                
+                <hr>
+                
+                <div class="card bg-light mt-4">
+                  <div class="card-body">
+                    <h6><i class="bi bi-info-circle"></i> Sobre o agendamento</h6>
+                    <ul class="small">
+                      <li>Posts com horário "now" não podem ser agendados</li>
+                      <li>Posts agendados são publicados automaticamente no horário definido</li>
+                      <li>Você pode remover o agendamento se necessário</li>
+                      <li>Lembre-se: posts publicados não podem ser modificados</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Postar imediatamente -->
+            <div class="card mt-4">
+              <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-lightning"></i> Publicar Imediatamente</h5>
+              </div>
+              <div class="card-body">
+                <p>Para postar um tweet imediatamente, use a opção "Aprovar" com horário "now" na aba Gerenciar.</p>
+                <div class="alert alert-info small">
+                  <i class="bi bi-info-circle-fill"></i> O sistema irá periodicamente verificar e publicar todos os posts aprovados com horário "now".
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Tab 4: Estatísticas -->
+      <div class="tab-pane fade" id="stats" role="tabpanel">
+        <div class="row">
+          <!-- Coluna da esquerda: Estatísticas detalhadas -->
+          <div class="col-lg-8">
+            <div class="card">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Estatísticas Detalhadas</h5>
+                <button id="refreshDetailedStats" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-arrow-clockwise"></i> Atualizar
+                </button>
+              </div>
+              <div class="card-body">
+                <div id="detailedStatsLoader" class="spinner-container">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Carregando...</span>
+                  </div>
+                </div>
+                <div id="detailedStatsContainer">
+                  <!-- Stats serão carregadas via JavaScript -->
+                </div>
+              </div>
+            </div>
+            
+            <!-- Histórico de postagens -->
+            <div class="card mt-4">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Histórico de Postagens</h5>
+                <button id="refreshHistory" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-arrow-clockwise"></i> Atualizar
+                </button>
+              </div>
+              <div class="card-body">
+                <div id="historyLoader" class="spinner-container">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Carregando...</span>
+                  </div>
+                </div>
+                <div class="list-posts-container">
+                  <div id="historyContainer">
+                    <!-- History serão carregados via JavaScript -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Coluna da direita: Status do bot e sistema -->
+          <div class="col-lg-4 mt-4 mt-lg-0">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> Status do Sistema</h5>
+              </div>
+              <div class="card-body">
+                <div id="systemStatusLoader" class="spinner-container">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Carregando...</span>
+                  </div>
+                </div>
+                <div id="systemStatusContainer">
+                  <!-- System status será carregado via JavaScript -->
+                  <table class="table table-sm">
+                    <tbody>
+                      <tr>
+                        <td><strong>Status do Bot:</strong></td>
+                        <td><span id="botStatus" class="badge bg-secondary">Verificando...</span></td>
+                      </tr>
+                      <tr>
+                        <td><strong>Scheduler:</strong></td>
+                        <td><span id="schedulerStatus" class="badge bg-secondary">Verificando...</span></td>
+                      </tr>
+                      <tr>
+                        <td><strong>Modo:</strong></td>
+                        <td><span id="serverMode">-</span></td>
+                      </tr>
+                      <tr>
+                        <td><strong>API:</strong></td>
+                        <td><span id="apiStatus" class="badge bg-secondary">Verificando...</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
