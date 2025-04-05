@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Bot X - Dashboard Web</title>
+  <!-- Bootstrap 5 (CDN) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Paleta de cores: Azul, Prata, Vermelho (estilo Red Bull) -->
+  <style>
+    :root {
+      --rb-blue: #00205b;   /* Azul escuro Red Bull */
+      --rb-silver: #c4c4c4; /* Prata */
+      --rb-red: #ed1c24;    /* Vermelho */
+    }
+    body {
+      background: linear-gradient(135deg, var(--rb-blue) 20%, var(--rb-silver) 90%);
+      color: #ffffff;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+    }
+    .rb-nav {
+      background-color: var(--rb-red);
+    }
+    .rb-card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(3px);
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+    .nav-pills .nav-link.active {
+      background-color: var(--rb-silver) !important;
+      color: var(--rb-blue) !important;
+    }
+    .btn-rb {
+      background-color: var(--rb-red);
+      border: none;
+    }
+    .btn-rb:hover {
+      background-color: #c8102e;
+    }
+    .rb-header {
+      text-align: center;
+      padding: 3rem 1rem 2rem;
+    }
+    .rb-header h1 {
+      font-size: 2.5rem;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+    .rb-header p {
+      font-size: 1.2rem;
+    }
+    .content-area {
+      max-width: 1000px;
+      margin: auto;
+      padding-bottom: 2rem;
+    }
+    label.form-label {
+      color: #f0f0f0;
+    }
+    pre {
+      white-space: pre-wrap; /* manter quebras de linha */
+      background-color: rgba(0,0,0,0.2);
+      color: #fff;
+      padding: 0.75rem;
+      border-radius: 5px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .text-secondary {
+      color: #ececec !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Barra de navegação -->
+  <nav class="navbar rb-nav">
+    <div class="container-fluid">
+      <span class="navbar-brand mb-0 h1">Bot X - Dashboard</span>
+    </div>
+  </nav>
+
+  <!-- Cabeçalho -->
+  <header class="rb-header">
+    <h1>Gerencie Suas Postagens</h1>
+    <p>Interface simples e intuitiva para qualquer pessoa postar no X (Twitter).</p>
+  </header>
+
+  <div class="content-area">
+
+    <!-- Nav pills (abas) -->
+    <ul class="nav nav-pills justify-content-center mb-4" id="pills-tab" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="pills-home-tab" data-bs-toggle="pill"
+                data-bs-target="#pills-home" type="button" role="tab"
+                aria-controls="pills-home" aria-selected="true">
+          Criar / Listar
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="pills-approve-tab" data-bs-toggle="pill"
+                data-bs-target="#pills-approve" type="button" role="tab"
+                aria-controls="pills-approve" aria-selected="false">
+          Aprovar / Editar
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="pills-delete-tab" data-bs-toggle="pill"
+                data-bs-target="#pills-delete" type="button" role="tab"
+                aria-controls="pills-delete" aria-selected="false">
+          Deletar / Agendar
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="pills-stats-tab" data-bs-toggle="pill"
+                data-bs-target="#pills-stats" type="button" role="tab"
+                aria-controls="pills-stats" aria-selected="false">
+          Estatísticas
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content" id="pills-tabContent">
+
+      <!-- TAB 1: CRIAR / LISTAR -->
+      <div class="tab-pane fade show active" id="pills-home" role="tabpanel" aria-labelledby="pills-home-tab">
+        <div class="rb-card p-4 mb-4">
+          <h3 class="mb-3">Criar Nova Postagem</h3>
+          <form id="formCreatePost" class="row gy-3">
+            <div class="col-12 col-md-8">
+              <label for="createText" class="form-label">Texto da Postagem</label>
+              <textarea class="form-control" id="createText" rows="3" required></textarea>
+            </div>
+            <div class="col-12 col-md-4">
+              <label for="createTime" class="form-label">Horário (HH:MM ou 'now')</label>
+              <input type="text" class="form-control" id="createTime" value="now">
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-rb">Criar Post</button>
+            </div>
+          </form>
+          <!-- Pré-visualização do texto -->
+          <div class="mt-3">
+            <h5>Pré-visualização:</h5>
+            <div id="createPreview" style="white-space: pre-wrap; 
+                                           background-color: rgba(0,0,0,0.15);
+                                           padding:0.75rem; 
+                                           border-radius:5px;">
+            </div>
+          </div>
+          <div id="createPostResult" class="mt-2 text-secondary"></div>
+        </div>
+
+        <div class="rb-card p-4">
+          <h3 class="mb-3">Listar Postagens</h3>
+          <div class="row g-3 align-items-end">
+            <div class="col-auto">
+              <label for="listStatus" class="form-label">Status</label>
+              <select id="listStatus" class="form-select">
+                <option value="all">Todas</option>
+                <option value="pending">Pendentes</option>
+                <option value="approved">Aprovadas</option>
+                <option value="scheduled">Agendadas</option>
+                <option value="history">Histórico</option>
+              </select>
+            </div>
+            <div class="col-auto">
+              <button onclick="listPosts()" class="btn btn-rb">Listar</button>
+            </div>
+          </div>
+          <pre id="listPostsResult" class="mt-3"></pre>
+        </div>
+      </div>
+
+      <!-- TAB 2: APROVAR / EDITAR -->
+      <div class="tab-pane fade" id="pills-approve" role="tabpanel" aria-labelledby="pills-approve-tab">
+        <div class="rb-card p-4 mb-4">
+          <h3 class="mb-3">Aprovar ou Rejeitar Post Pendente</h3>
+          <form id="formApprovePost" class="row gy-3 align-items-end">
+            <div class="col-auto">
+              <label class="form-label">Nº da Postagem (Ex: 1 = primeira pendente)</label>
+              <input type="number" class="form-control" id="approveIndex" min="1" value="1">
+            </div>
+            <div class="col-auto">
+              <label class="form-label">Aprovar?</label>
+              <select id="approveSelect" class="form-select">
+                <option value="true">Sim</option>
+                <option value="false">Não</option>
+              </select>
+            </div>
+            <div class="col-auto">
+              <label class="form-label">Novo horário (opcional)</label>
+              <input type="text" class="form-control" id="approveNewTime" placeholder="HH:MM ou 'now'">
+            </div>
+            <div class="col-auto">
+              <button type="submit" class="btn btn-rb">Aprovar/Rejeitar</button>
+            </div>
+          </form>
+          <div id="approveResult" class="mt-2 text-secondary"></div>
+        </div>
+
+        <div class="rb-card p-4">
+          <h3 class="mb-3">Editar Postagem</h3>
+          <form id="formEditPost" class="row gy-3 align-items-end">
+            <div class="col-auto">
+              <label class="form-label">Nº da Postagem</label>
+              <input type="number" class="form-control" id="editIndex" min="1" value="1">
+            </div>
+            <div class="col-auto">
+              <label class="form-label">Status atual</label>
+              <select id="editStatus" class="form-select">
+                <option value="pending">Pendente</option>
+                <option value="approved">Aprovada</option>
+                <option value="scheduled">Agendada</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label">Novo texto (opcional)</label>
+              <input type="text" class="form-control" id="editNewText">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label">Novo horário (opcional)</label>
+              <input type="text" class="form-control" id="editNewTime">
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-rb">Editar</button>
+            </div>
+          </form>
+          <div id="editResult" class="mt-2 text-secondary"></div>
+        </div>
+      </div>
+
+      <!-- TAB 3: DELETAR / AGENDAR -->
+      <div class="tab-pane fade" id="pills-delete" role="tabpanel" aria-labelledby="pills-delete-tab">
+        <div class="rb-card p-4 mb-4">
+          <h3 class="mb-3">Deletar Postagem</h3>
+          <form id="formDeletePost" class="row gy-3 align-items-end">
+            <div class="col-auto">
+              <label class="form-label">Nº da Postagem</label>
+              <input type="number" class="form-control" id="deleteIndex" min="1" value="1">
+            </div>
+            <div class="col-auto">
+              <label class="form-label">Status</label>
+              <select id="deleteStatus" class="form-select">
+                <option value="pending">Pendente</option>
+                <option value="approved">Aprovada</option>
+                <option value="scheduled">Agendada</option>
+              </select>
+            </div>
+            <div class="col-auto">
+              <button type="submit" class="btn btn-danger">Deletar</button>
+            </div>
+          </form>
+          <div id="deleteResult" class="mt-2 text-secondary"></div>
+        </div>
+
+        <div class="rb-card p-4">
+          <h3 class="mb-3">Agendar Post Aprovado</h3>
+          <form id="formSchedulePost" class="row gy-3 align-items-end">
+            <div class="col-auto">
+              <label class="form-label">Nº da Postagem (em 'approved')</label>
+              <input type="number" class="form-control" id="scheduleIndex" min="1" value="1">
+            </div>
+            <div class="col-auto">
+              <label class="form-label">Agendar?</label>
+              <select id="scheduleBool" class="form-select">
+                <option value="true">Sim</option>
+                <option value="false">Remover agendamento</option>
+              </select>
+            </div>
+            <div class="col-auto">
+              <button type="submit" class="btn btn-rb">Confirmar</button>
+            </div>
+          </form>
+          <div id="scheduleResult" class="mt-2 text-secondary"></div>
+        </div>
+      </div>
+
+      <!-- TAB 4: ESTATÍSTICAS -->
+      <div class="tab-pane fade" id="pills-stats" role="tabpanel" aria-labelledby="pills-stats-tab">
+        <div class="rb-card p-4">
+          <h3 class="mb-3">Estatísticas Gerais</h3>
+          <p>Exibe quantos posts existem em cada status e quantos foram postados hoje.</p>
+          <button class="btn btn-rb mb-3" onclick="getStats()">Ver Estatísticas</button>
+          <pre id="statsResult"></pre>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Bootstrap 5 (JS) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // -------------------------------------------------
+    //    Atualiza pré-visualização de texto ao digitar
+    // -------------------------------------------------
+    const createTextInput = document.getElementById('createText');
+    const createPreview = document.getElementById('createPreview');
+
+    function updatePreview() {
+      const text = createTextInput.value;
+      createPreview.textContent = text;  // exibe com quebras de linha
+    }
+    createTextInput.addEventListener('input', updatePreview);
+
+
+    // -------------------------------------------------
+    //           Funções de Chamada à API
+    // -------------------------------------------------
+
+    // 1) CRIAR POST
+    document.getElementById('formCreatePost').addEventListener('submit', function(e){
+      e.preventDefault();
+      const text = createTextInput.value.trim();
+      const time = document.getElementById('createTime').value.trim();
+      fetch('/api/create_post', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ text, time })
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('createPostResult').textContent = data.message;
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById('createPostResult').textContent = 'Erro ao criar post.';
+      });
+    });
+
+    // 2) LISTAR POSTS
+    function listPosts() {
+      const status = document.getElementById('listStatus').value;
+      fetch('/api/list_posts?status=' + status)
+        .then(r => r.json())
+        .then(data => {
+          if (data.posts) {
+            document.getElementById('listPostsResult').textContent = data.posts.join('\n');
+          } else {
+            document.getElementById('listPostsResult').textContent = 'Nenhum resultado.';
+          }
+        })
+        .catch(err => {
+          console.error(err);
+          document.getElementById('listPostsResult').textContent = 'Erro ao listar.';
+        });
+    }
+
+    // 3) APROVAR/REJEITAR POST
+    document.getElementById('formApprovePost').addEventListener('submit', function(e){
+      e.preventDefault();
+      const index = parseInt(document.getElementById('approveIndex').value) - 1;
+      const approve = (document.getElementById('approveSelect').value === 'true');
+      const new_time = document.getElementById('approveNewTime').value || null;
+
+      fetch('/api/approve_post', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ index, approve, new_time })
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('approveResult').textContent = data.message;
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById('approveResult').textContent = 'Erro ao aprovar/rejeitar.';
+      });
+    });
+
+    // 4) EDITAR POST
+    document.getElementById('formEditPost').addEventListener('submit', function(e){
+      e.preventDefault();
+      const index = parseInt(document.getElementById('editIndex').value) - 1;
+      const status = document.getElementById('editStatus').value;
+      const new_text = document.getElementById('editNewText').value.trim() || null;
+      const new_time = document.getElementById('editNewTime').value.trim() || null;
+
+      fetch('/api/edit_post', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ index, status, new_text, new_time })
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('editResult').textContent = data.message;
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById('editResult').textContent = 'Erro ao editar.';
+      });
+    });
+
+    // 5) DELETAR POST
+    document.getElementById('formDeletePost').addEventListener('submit', function(e){
+      e.preventDefault();
+      const index = parseInt(document.getElementById('deleteIndex').value) - 1;
+      const status = document.getElementById('deleteStatus').value;
+
+      fetch('/api/delete_post', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ index, status })
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('deleteResult').textContent = data.message;
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById('deleteResult').textContent = 'Erro ao deletar.';
+      });
+    });
+
+    // 6) AGENDAR POST
+    document.getElementById('formSchedulePost').addEventListener('submit', function(e){
+      e.preventDefault();
+      const index = parseInt(document.getElementById('scheduleIndex').value) - 1;
+      const scheduled = (document.getElementById('scheduleBool').value === 'true');
+
+      fetch('/api/schedule_post', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ index, scheduled })
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('scheduleResult').textContent = data.message;
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById('scheduleResult').textContent = 'Erro ao agendar.';
+      });
+    });
+
+    // 7) ESTATÍSTICAS
+    function getStats() {
+      fetch('/api/get_stats')
+        .then(r => r.json())
+        .then(data => {
+          const txt = JSON.stringify(data, null, 2);
+          document.getElementById('statsResult').textContent = txt;
+        })
+        .catch(err => {
+          console.error(err);
+          document.getElementById('statsResult').textContent = 'Erro ao obter estatísticas.';
+        });
+    }
+
+    // Atualiza preview no carregamento (inicialmente vazio):
+    updatePreview();
+  </script>
+</body>
+</html>

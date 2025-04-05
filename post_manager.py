@@ -29,7 +29,8 @@ DEFAULT_POSTS_DATA = {
     "history": []
 }
 
-file_lock = threading.Lock()
+# Substituímos Lock() por RLock():
+file_lock = threading.RLock()
 
 def load_posts():
     """
@@ -43,7 +44,10 @@ def load_posts():
                 # Arquivo não existe: cria um vazio
                 logging.info(f"DEBUG -> {POSTS_FILE} não existe. Criando arquivo novo.")
                 posts_data = DEFAULT_POSTS_DATA.copy()
-                save_posts(posts_data)
+                success = save_posts(posts_data)
+                if not success:
+                    logging.error(f"DEBUG -> Falha ao criar novo arquivo {POSTS_FILE}")
+                    return DEFAULT_POSTS_DATA.copy()
                 return posts_data
 
             # Se existe, checar tamanho
@@ -51,6 +55,9 @@ def load_posts():
             logging.info(f"DEBUG -> {POSTS_FILE} existe, tamanho = {size} bytes.")
             if size == 0:
                 logging.warning(f"Arquivo {POSTS_FILE} está vazio. Criando nova estrutura.")
+                success = save_posts(DEFAULT_POSTS_DATA.copy())
+                if not success:
+                    logging.error(f"DEBUG -> Falha ao inicializar arquivo vazio {POSTS_FILE}")
                 return DEFAULT_POSTS_DATA.copy()
             
             with open(POSTS_FILE, "r", encoding="utf-8") as f:
@@ -129,12 +136,40 @@ def save_posts(posts_data):
                     if "id" not in post:
                         post["id"] = str(uuid.uuid4())
             
-            with open(POSTS_FILE, "w", encoding="utf-8") as f:
-                json.dump(posts_data, f, indent=4, ensure_ascii=False)
+            # Verificar e criar diretório contendo o arquivo, se necessário
+            posts_dir = os.path.dirname(POSTS_FILE)
+            if posts_dir and not os.path.exists(posts_dir):
+                try:
+                    os.makedirs(posts_dir)
+                    logging.info(f"DEBUG -> Diretório {posts_dir} criado para {POSTS_FILE}")
+                except Exception as e:
+                    logging.error(f"Erro ao criar diretório para {POSTS_FILE}: {e}")
+                    return False
             
-            logging.info("DEBUG -> save_posts() concluiu gravação com sucesso.")
-            return True
-        
+            # Primeiro escrever para um arquivo temporário
+            temp_file = f"{POSTS_FILE}.tmp"
+            try:
+                with open(temp_file, "w", encoding="utf-8") as f:
+                    json.dump(posts_data, f, indent=4, ensure_ascii=False)
+                
+                # Se a escrita for bem-sucedida, renomear para o arquivo real
+                if os.path.exists(POSTS_FILE):
+                    os.replace(temp_file, POSTS_FILE)
+                else:
+                    os.rename(temp_file, POSTS_FILE)
+                
+                logging.info("DEBUG -> save_posts() concluiu gravação com sucesso.")
+                return True
+            
+            except Exception as e:
+                logging.error(f"Erro ao escrever arquivo temporário: {e}")
+                if os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
+                return False
+            
         except Exception as e:
             logging.error(f"Erro em save_posts(): {e}")
             # Tenta salvar backup

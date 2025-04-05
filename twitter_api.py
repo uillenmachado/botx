@@ -4,29 +4,49 @@ Interface com a API do X (Twitter) para Bot
 Este módulo gerencia toda a comunicação com a API do X (Twitter),
 incluindo autenticação, busca de tendências e publicação de tweets.
 
-Separar as funções de API em um módulo específico facilita a manutenção
-e permite testar o bot sem precisar se conectar à API real.
+Recursos principais:
+- Autenticação com a API v1.1 e v2 do X (Twitter)
+- Sistema robusto de retry com backoff exponencial
+- Tratamento abrangente de erros com mensagens amigáveis
+- Funções para postar tweets, buscar tendências e obter informações do usuário
 
-Autor: Uillen Machado
+Autor: Uillen Machado (com melhorias)
 Repositório: github.com/uillenmachado/botx
 """
 
 import tweepy # type: ignore
 import logging
 import time
+import sys
 from functools import wraps
 from datetime import datetime
+import json
 
 from config import (
     API_KEY, API_KEY_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET, 
-    BEARER_TOKEN, WOEID_GLOBAL, NUM_TRENDS, MAX_RETRIES, INITIAL_BACKOFF
+    BEARER_TOKEN, WOEID_GLOBAL, NUM_TRENDS, MAX_RETRIES, INITIAL_BACKOFF,
+    LOG_DIR
 )
+
+# Configuração de logging específica para este módulo
+logger = logging.getLogger(__name__)
 
 # Variáveis globais para armazenar clientes da API
 client = None  # Cliente da API v2
 api_v1 = None  # Cliente da API v1.1
 
-# Função para retry com backoff
+# Status de autenticação
+auth_status = {
+    "authenticated": False,
+    "username": None,
+    "last_error": None,
+    "last_auth_attempt": None
+}
+
+# =============================================================================
+# Funções de utilidade para retry e tratamento de erros
+# =============================================================================
+
 def retry_with_backoff(max_retries=MAX_RETRIES, initial_backoff=INITIAL_BACKOFF):
     """
     Decorator para tentar executar uma função várias vezes com backoff exponencial em caso de falha.
@@ -48,23 +68,100 @@ def retry_with_backoff(max_retries=MAX_RETRIES, initial_backoff=INITIAL_BACKOFF)
             while retries < max_retries:
                 try:
                     return func(*args, **kwargs)
+                except tweepy.TweepyException as e:
+                    last_exception = e
+                    error_msg = str(e)
+                    retries += 1
+                    
+                    # Tratamento especial para erros de limite de taxa
+                    if "rate limit" in error_msg.lower() or "429" in error_msg:
+                        wait_time = backoff * 2  # Espera mais para rate limits
+                        logger.warning(f"Limite de taxa atingido. Aguardando {wait_time} segundos.")
+                    else:
+                        wait_time = backoff
+                    
+                    if retries == max_retries:
+                        logger.error(f"Falha após {max_retries} tentativas: {e}")
+                        break
+                        
+                    logger.warning(f"Tentativa {retries}/{max_retries} falhou: {e}. "
+                                   f"Tentando novamente em {wait_time} segundos.")
+                    time.sleep(wait_time)
+                    backoff *= 2  # Backoff exponencial
+                    
                 except Exception as e:
                     last_exception = e
                     retries += 1
+                    logger.error(f"Erro não esperado: {e}")
                     if retries == max_retries:
-                        logging.error(f"Falha após {max_retries} tentativas: {e}")
                         break
-                    logging.warning(f"Tentativa {retries} falhou: {e}. Tentando novamente em {backoff} segundos.")
+                    logger.warning(f"Tentativa {retries}/{max_retries}. "
+                                   f"Tentando novamente em {backoff} segundos.")
                     time.sleep(backoff)
-                    backoff *= 2  # Backoff exponencial
+                    backoff *= 2
             
             # Se chegamos aqui, todas as tentativas falharam
             if last_exception:
-                raise last_exception
-            return None
+                error_type = type(last_exception).__name__
+                error_message = str(last_exception)
+                logger.error(f"Todas as tentativas falharam. Último erro ({error_type}): {error_message}")
+                
+                # Criamos um retorno amigável baseado no tipo de erro
+                if isinstance(last_exception, tweepy.TweepyException):
+                    error_msg = str(last_exception).lower()
+                    if "rate limit" in error_msg or "429" in error_msg:
+                        return False, "Limite de taxa da API excedido. Tente novamente mais tarde.", None
+                    elif "authentication" in error_msg or "401" in error_msg:
+                        return False, "Erro de autenticação. Verifique suas credenciais da API.", None
+                    else:
+                        return False, f"Erro da API do X: {error_message}", None
+                else:
+                    return False, f"Erro inesperado: {error_message}", None
+            
+            return False, "Erro desconhecido durante a operação.", None
             
         return wrapper
     return decorator
+
+def parse_api_error(e):
+    """
+    Analisa a exceção da API e retorna uma mensagem de erro amigável.
+    
+    Args:
+        e (Exception): Exceção capturada
+        
+    Returns:
+        str: Mensagem de erro amigável
+    """
+    error_msg = str(e).lower()
+    
+    # Erros de autenticação
+    if "authentication" in error_msg or "401" in error_msg:
+        return "Erro de autenticação. Verifique suas credenciais da API."
+    
+    # Erros de limite de taxa
+    elif "rate limit" in error_msg or "429" in error_msg:
+        return "Limite de taxa excedido. Aguarde alguns minutos e tente novamente."
+    
+    # Erros de conteúdo
+    elif "duplicate content" in error_msg:
+        return "O X não permite postar o mesmo texto duas vezes seguidas."
+    elif "text is too long" in error_msg:
+        return "O texto excede o limite de caracteres permitido pelo X."
+    
+    # Erros de aplicação
+    elif "application suspended" in error_msg:
+        return "Sua aplicação do X foi suspensa. Visite o portal de desenvolvedores para mais informações."
+    elif "verification required" in error_msg:
+        return "Verifique seu e-mail ou telefone na sua conta do X."
+    
+    # Erro genérico
+    else:
+        return f"Erro da API do X: {str(e)}"
+
+# =============================================================================
+# Funções de API
+# =============================================================================
 
 def initialize_api():
     """
@@ -74,7 +171,9 @@ def initialize_api():
     Returns:
         tuple: (bool, str) - Sucesso (True/False) e mensagem explicativa.
     """
-    global client, api_v1
+    global client, api_v1, auth_status
+    
+    auth_status["last_auth_attempt"] = datetime.now()
     
     try:
         # Verifica se temos todas as credenciais necessárias
@@ -88,7 +187,11 @@ def initialize_api():
             
             missing_str = ", ".join(missing_creds)
             error_msg = f"Credenciais ausentes: {missing_str}. Verifique seu arquivo .env."
-            logging.error(error_msg)
+            logger.error(error_msg)
+            
+            auth_status["authenticated"] = False
+            auth_status["last_error"] = error_msg
+            
             return False, error_msg
         
         # Inicializa cliente da API v2 (para postagens)
@@ -106,31 +209,72 @@ def initialize_api():
         )
         api_v1 = tweepy.API(auth)
         
-        # Teste de conexão
-        # Verifica se consegue obter as informações do usuário
-        user_info = client.get_me()
-        if not user_info or not hasattr(user_info, "data"):
-            return False, "Erro ao obter informações do usuário. Verifique suas credenciais."
+        # Teste de conexão com tratamento de erros aprimorado
+        try:
+            # Verifica se consegue obter as informações do usuário
+            user_info = client.get_me()
+            if not user_info or not hasattr(user_info, "data"):
+                error_msg = "Erro ao obter informações do usuário. Verifique suas credenciais."
+                logger.error(error_msg)
+                
+                auth_status["authenticated"] = False
+                auth_status["last_error"] = error_msg
+                
+                return False, error_msg
+                
+            username = user_info.data.username
             
-        username = user_info.data.username
+            # Atualiza o status de autenticação
+            auth_status["authenticated"] = True
+            auth_status["username"] = username
+            auth_status["last_error"] = None
+            
+            logger.info(f"Conexão com a API do X estabelecida com sucesso. Usuário: @{username}")
+            return True, f"Conectado à API do X como @{username}"
         
-        logging.info(f"Conexão com a API do X estabelecida com sucesso. Usuário: @{username}")
-        return True, f"Conectado à API do X como @{username}"
-        
+        except tweepy.TweepyException as e:
+            error_msg = parse_api_error(e)
+            logger.error(f"Erro ao verificar autenticação: {error_msg}")
+            
+            auth_status["authenticated"] = False
+            auth_status["last_error"] = error_msg
+            
+            return False, error_msg
+            
     except tweepy.TweepyException as e:
-        error_msg = str(e)
-        logging.error(f"Erro ao conectar com a API do X: {error_msg}")
+        error_msg = parse_api_error(e)
+        logger.error(f"Erro ao conectar com a API do X: {error_msg}")
         
-        # Tratamento mais específico de erros de autenticação
-        if "authentication" in error_msg.lower() or "401" in error_msg:
-            return False, "Erro de autenticação. Verifique suas credenciais da API."
-        elif "rate limit" in error_msg.lower() or "429" in error_msg:
-            return False, "Limite de taxa excedido ao conectar com a API. Tente novamente mais tarde."
-        else:
-            return False, f"Erro ao conectar com a API do X: {error_msg}"
+        auth_status["authenticated"] = False
+        auth_status["last_error"] = error_msg
+        
+        return False, error_msg
     except Exception as e:
-        logging.error(f"Erro inesperado ao inicializar API: {e}")
-        return False, f"Erro inesperado ao inicializar API: {e}"
+        error_msg = f"Erro inesperado ao inicializar API: {e}"
+        logger.error(error_msg)
+        
+        auth_status["authenticated"] = False
+        auth_status["last_error"] = error_msg
+        
+        return False, error_msg
+
+def ensure_auth():
+    """
+    Garante que a API está autenticada antes de executar uma operação.
+    Tenta reconectar se necessário.
+    
+    Returns:
+        bool: True se autenticado, False caso contrário
+    """
+    global auth_status
+    
+    # Se já estamos autenticados, retorne True
+    if auth_status["authenticated"] and client is not None and api_v1 is not None:
+        return True
+    
+    # Tenta inicializar a API
+    success, _ = initialize_api()
+    return success
 
 @retry_with_backoff()
 def get_trends():
@@ -143,10 +287,9 @@ def get_trends():
     """
     global api_v1
     
-    if api_v1 is None:
-        success, message = initialize_api()
-        if not success:
-            return [{"name": message, "volume": "N/A"}], datetime.now()
+    # Garante que estamos autenticados
+    if not ensure_auth():
+        return [{"name": "Erro de autenticação. Verifique suas credenciais.", "volume": "N/A"}], datetime.now()
         
     try:
         trends = api_v1.get_place_trends(id=WOEID_GLOBAL)
@@ -154,15 +297,15 @@ def get_trends():
         
         # Validação mais robusta da resposta da API
         if not trends:
-            logging.warning("API retornou resposta vazia para tendências.")
+            logger.warning("API retornou resposta vazia para tendências.")
             return [{"name": "Não foi possível obter tendências", "volume": "N/A"}], timestamp
             
         if not isinstance(trends, list) or len(trends) == 0:
-            logging.warning(f"API retornou resposta em formato inesperado: {type(trends)}")
+            logger.warning(f"API retornou resposta em formato inesperado: {type(trends)}")
             return [{"name": "Resposta da API em formato inesperado", "volume": "N/A"}], timestamp
             
         if not isinstance(trends[0], dict) or "trends" not in trends[0]:
-            logging.warning(f"Formato de tendências inesperado: {trends}")
+            logger.warning(f"Formato de tendências inesperado: {trends}")
             return [{"name": "Formato de tendências inesperado", "volume": "N/A"}], timestamp
         
         # Extrai e filtra as tendências
@@ -177,27 +320,34 @@ def get_trends():
         
         # Verifica se realmente conseguimos extrair tendências
         if not trend_list:
-            logging.warning("Nenhuma tendência encontrada na resposta da API.")
+            logger.warning("Nenhuma tendência encontrada na resposta da API.")
             return [{"name": "Nenhuma tendência disponível", "volume": "N/A"}], timestamp
         
+        # Registra as tendências encontradas
         trend_names = [t["name"] for t in trend_list]
-        logging.info(f"Tendências atualizadas: {', '.join(trend_names)}")
+        logger.info(f"Tendências atualizadas: {', '.join(trend_names)}")
+        
+        # Tenta salvar as tendências em um arquivo para análise histórica
+        try:
+            trends_file = f"{LOG_DIR}/trends_{datetime.now().strftime('%Y%m%d')}.json"
+            with open(trends_file, 'a', encoding='utf-8') as f:
+                json.dump({
+                    "timestamp": timestamp.isoformat(),
+                    "trends": trend_list
+                }, f, ensure_ascii=False)
+                f.write('\n')  # Adiciona uma quebra de linha
+        except Exception as e:
+            logger.warning(f"Não foi possível salvar tendências no arquivo: {e}")
+        
         return trend_list, timestamp
             
     except tweepy.TweepyException as e:
-        error_msg = str(e)
-        logging.error(f"Erro ao buscar tendências: {error_msg}")
-        
-        # Trata diferentes tipos de erros da API
-        if "rate limit" in error_msg.lower() or "429" in error_msg:
-            return [{"name": "Limite de taxa excedido ao buscar tendências", "volume": "N/A"}], datetime.now()
-        elif "authentication" in error_msg.lower() or "401" in error_msg:
-            return [{"name": "Erro de autenticação ao buscar tendências", "volume": "N/A"}], datetime.now()
-        else:
-            return [{"name": f"Erro ao buscar tendências: {error_msg}", "volume": "N/A"}], datetime.now()
+        error_msg = parse_api_error(e)
+        logger.error(f"Erro ao buscar tendências: {error_msg}")
+        return [{"name": f"Erro ao buscar tendências: {error_msg}", "volume": "N/A"}], datetime.now()
             
     except Exception as e:
-        logging.error(f"Erro inesperado ao buscar tendências: {e}")
+        logger.error(f"Erro inesperado ao buscar tendências: {e}")
         return [{"name": "Erro inesperado ao buscar tendências", "volume": "N/A"}], datetime.now()
 
 @retry_with_backoff()
@@ -213,10 +363,9 @@ def post_tweet(text):
     """
     global client
     
-    if client is None:
-        success, message = initialize_api()
-        if not success:
-            return False, message, None
+    # Garante que estamos autenticados
+    if not ensure_auth():
+        return False, "Erro de autenticação. Verifique suas credenciais.", None
         
     try:
         # Verifica se o texto está dentro do limite
@@ -233,7 +382,7 @@ def post_tweet(text):
         # Extrai o ID do tweet
         tweet_id = response.data['id']
         
-        logging.info(f"Tweet publicado com sucesso. ID: {tweet_id}")
+        logger.info(f"Tweet publicado com sucesso. ID: {tweet_id}")
         return True, f"Tweet publicado com sucesso. ID: {tweet_id}", {
             "id": tweet_id,
             "text": text,
@@ -241,24 +390,14 @@ def post_tweet(text):
         }
         
     except tweepy.TweepyException as e:
-        error_msg = str(e)
-        logging.error(f"Erro ao publicar tweet: {error_msg}")
-        
-        # Trata erros específicos da API
-        if "duplicate content" in error_msg.lower():
-            return False, "Erro: Conteúdo duplicado. O X não permite postar o mesmo texto duas vezes seguidas.", None
-        elif "authorization" in error_msg.lower() or "authentication" in error_msg.lower() or "401" in error_msg:
-            return False, "Erro de autorização. Verifique suas credenciais da API.", None
-        elif "rate limit" in error_msg.lower() or "429" in error_msg:
-            return False, "Limite de taxa excedido. Aguarde alguns minutos e tente novamente.", None
-        elif "text is too long" in error_msg.lower():
-            return False, f"O texto excede o limite de caracteres permitido pelo X.", None
-        else:
-            return False, f"Erro ao publicar tweet: {error_msg}", None
+        error_msg = parse_api_error(e)
+        logger.error(f"Erro ao publicar tweet: {error_msg}")
+        return False, error_msg, None
             
     except Exception as e:
-        logging.error(f"Erro inesperado ao publicar tweet: {e}")
-        return False, f"Erro inesperado ao publicar tweet: {e}", None
+        error_msg = f"Erro inesperado ao publicar tweet: {e}"
+        logger.error(error_msg)
+        return False, error_msg, None
 
 @retry_with_backoff()
 def get_user_info():
@@ -270,10 +409,9 @@ def get_user_info():
     """
     global client
     
-    if client is None:
-        success, message = initialize_api()
-        if not success:
-            return False, {"error": message}
+    # Garante que estamos autenticados
+    if not ensure_auth():
+        return False, {"error": "Erro de autenticação. Verifique suas credenciais."}
         
     try:
         user_info = client.get_me(user_fields=["name", "username", "description", "public_metrics"])
@@ -300,20 +438,14 @@ def get_user_info():
             return False, {"error": "Não foi possível obter informações do usuário"}
             
     except tweepy.TweepyException as e:
-        error_msg = str(e)
-        logging.error(f"Erro ao obter informações do usuário: {error_msg}")
-        
-        # Tratamento mais específico de erros
-        if "authentication" in error_msg.lower() or "401" in error_msg:
-            return False, {"error": "Erro de autenticação ao obter informações do usuário"}
-        elif "rate limit" in error_msg.lower() or "429" in error_msg:
-            return False, {"error": "Limite de taxa excedido ao obter informações do usuário"}
-        else:
-            return False, {"error": f"Erro ao obter informações do usuário: {error_msg}"}
+        error_msg = parse_api_error(e)
+        logger.error(f"Erro ao obter informações do usuário: {error_msg}")
+        return False, {"error": error_msg}
             
     except Exception as e:
-        logging.error(f"Erro inesperado ao obter informações do usuário: {e}")
-        return False, {"error": f"Erro inesperado ao obter informações do usuário: {e}"}
+        error_msg = f"Erro inesperado ao obter informações do usuário: {e}"
+        logger.error(error_msg)
+        return False, {"error": error_msg}
 
 def check_api_limits():
     """
@@ -325,16 +457,48 @@ def check_api_limits():
     # Nota: A API v2 do Twitter ainda não oferece um endpoint fácil para 
     # verificar os limites restantes como a v1.1 fazia com get_rate_limit_status
     
-    # Por enquanto, retornamos informações estáticas sobre os limites
-    return {
-        "post_tweets": {
-            "limit": 500,
-            "remaining": "Desconhecido",
-            "reset": "Mensal"
-        },
-        "trends": {
-            "limit": 75,
-            "period": "15 minutos",
-            "note": "O bot busca tendências apenas 1 vez por dia, muito abaixo do limite."
+    status = {
+        "authenticated": auth_status["authenticated"],
+        "username": auth_status["username"],
+        "last_auth_attempt": auth_status["last_auth_attempt"],
+        "limits": {
+            "post_tweets": {
+                "limit": 500,
+                "remaining": "Desconhecido",
+                "reset": "Mensal"
+            },
+            "trends": {
+                "limit": 75,
+                "period": "15 minutos",
+                "note": "O bot busca tendências apenas 1 vez por dia, muito abaixo do limite."
+            }
         }
     }
+    
+    if auth_status["last_error"]:
+        status["last_error"] = auth_status["last_error"]
+    
+    return status
+
+def health_check():
+    """
+    Executa uma verificação de saúde da API.
+    
+    Returns:
+        dict: Estado de saúde da API.
+    """
+    # Garante que estamos autenticados
+    authenticated = ensure_auth()
+    
+    # Constrói o status de saúde
+    health = {
+        "authenticated": authenticated,
+        "username": auth_status["username"] if authenticated else None,
+        "timestamp": datetime.now().isoformat(),
+        "status": "online" if authenticated else "offline"
+    }
+    
+    if auth_status["last_error"]:
+        health["last_error"] = auth_status["last_error"]
+    
+    return health
