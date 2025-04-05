@@ -1,6 +1,6 @@
 # Arquivo de ambiente com chaves da API
 .env
-*.env.backup
+*.env.*
 
 # Banco de dados SQLite
 *.db
@@ -9,8 +9,13 @@
 
 # Arquivos de dados gerados pelo bot
 posts.json
-*.backup.*
-bot_log.txt
+*.backup
+*.bak
+*~
+log.txt
+*.log
+
+# Diretório de logs
 logs/
 
 # Arquivos de cache do Python
@@ -45,7 +50,7 @@ wheels/
 .installed.cfg
 *.egg
 
-# Arquivos específicos do sistema
+# Arquivos temporários do sistema operacional
 .DS_Store
 Thumbs.db
 desktop.ini
@@ -63,10 +68,6 @@ desktop.ini
 .settings/
 *.code-workspace
 
-# Arquivos temporários
-*.tmp
-*.temp
-*.bak
-*~
+# Diretórios temporários
 tmp/
 temp/

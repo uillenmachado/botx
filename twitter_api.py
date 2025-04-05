@@ -18,6 +18,7 @@ import tweepy # type: ignore
 import logging
 import time
 import sys
+import re
 from functools import wraps
 from datetime import datetime
 import json
@@ -25,7 +26,7 @@ import json
 from config import (
     API_KEY, API_KEY_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET, 
     BEARER_TOKEN, WOEID_GLOBAL, NUM_TRENDS, MAX_RETRIES, INITIAL_BACKOFF,
-    LOG_DIR
+    LOG_DIR, TIMEZONE_OBJ  # Importando o objeto timezone configurado
 )
 
 # Configuração de logging específica para este módulo
@@ -160,6 +161,82 @@ def parse_api_error(e):
         return f"Erro da API do X: {str(e)}"
 
 # =============================================================================
+# Funções de validação de texto para tweets
+# =============================================================================
+
+def validate_tweet_text(text):
+    """
+    Valida e sanitiza o texto de um tweet para evitar problemas com a API.
+    
+    Args:
+        text (str): Texto do tweet a ser validado
+        
+    Returns:
+        tuple: (bool, str, str) - Sucesso, mensagem e texto sanitizado
+    """
+    if not text or not text.strip():
+        return False, "O texto do tweet não pode estar vazio.", ""
+    
+    # Limita o tamanho do texto
+    if len(text) > 280:
+        return False, f"O texto excede o limite de 280 caracteres. Atual: {len(text)}", text[:280]
+    
+    # Sanitiza o texto removendo caracteres problemáticos e controlando emojis
+    sanitized_text = sanitize_tweet_text(text)
+    
+    # Verifica se o texto foi alterado significativamente após a sanitização
+    if len(sanitized_text.strip()) == 0:
+        return False, "O texto contém apenas caracteres inválidos.", ""
+    
+    # Verifica se o texto foi reduzido em mais de 10% após a sanitização
+    reduction_percent = (len(text) - len(sanitized_text)) / len(text) * 100
+    if reduction_percent > 10:
+        return True, f"Aviso: {reduction_percent:.1f}% do texto foi removido durante a sanitização.", sanitized_text
+    
+    return True, "Texto válido para publicação.", sanitized_text
+
+def sanitize_tweet_text(text):
+    """
+    Sanitiza o texto do tweet removendo caracteres problemáticos e controlando emojis.
+    
+    Args:
+        text (str): Texto original do tweet
+        
+    Returns:
+        str: Texto sanitizado
+    """
+    # Primeiro, remove caracteres de controle exceto quebras de linha e tabs
+    sanitized = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
+    
+    # Substitui múltiplas quebras de linha consecutivas por apenas uma
+    sanitized = re.sub(r'(\r\n|\n|\r){3,}', '\n\n', sanitized)
+    
+    # Trata caracteres unicode específicos que podem causar problemas
+    # Mantém emojis válidos, mas remove caracteres inválidos
+    
+    # Remove Zero Width Joiners extras que poderiam corromper emojis
+    sanitized = re.sub(r'\u200D{2,}', '\u200D', sanitized)
+    
+    # Remove caracteres de formatação raros que podem causar problemas
+    sanitized = re.sub(r'[\u2060\u200B\u200C\u200E\u200F\u061C]', '', sanitized)
+    
+    # Trata combinações potencialmente problemáticas de emojis
+    # Este é um enfoque conservador. Se necessário, podemos ser mais específicos.
+    emoji_combining_sequences = [
+        # Exemplos de sequências que podem causar problemas em algumas plataformas
+        r'\uFE0F\u20E3',  # Keycap sequence
+        r'[\U0001F1E6-\U0001F1FF]{3,}',  # Limita bandeiras a no máximo 2 caracteres
+    ]
+    
+    for sequence in emoji_combining_sequences:
+        sanitized = re.sub(sequence, '', sanitized)
+    
+    # Remove espaços extras no início e fim
+    sanitized = sanitized.strip()
+    
+    return sanitized
+
+# =============================================================================
 # Funções de API
 # =============================================================================
 
@@ -173,7 +250,7 @@ def initialize_api():
     """
     global client, api_v1, auth_status
     
-    auth_status["last_auth_attempt"] = datetime.now()
+    auth_status["last_auth_attempt"] = datetime.now(TIMEZONE_OBJ)
     
     try:
         # Verifica se temos todas as credenciais necessárias
@@ -289,11 +366,11 @@ def get_trends():
     
     # Garante que estamos autenticados
     if not ensure_auth():
-        return [{"name": "Erro de autenticação. Verifique suas credenciais.", "volume": "N/A"}], datetime.now()
+        return [{"name": "Erro de autenticação. Verifique suas credenciais.", "volume": "N/A"}], datetime.now(TIMEZONE_OBJ)
         
     try:
         trends = api_v1.get_place_trends(id=WOEID_GLOBAL)
-        timestamp = datetime.now()
+        timestamp = datetime.now(TIMEZONE_OBJ)
         
         # Validação mais robusta da resposta da API
         if not trends:
@@ -329,7 +406,7 @@ def get_trends():
         
         # Tenta salvar as tendências em um arquivo para análise histórica
         try:
-            trends_file = f"{LOG_DIR}/trends_{datetime.now().strftime('%Y%m%d')}.json"
+            trends_file = f"{LOG_DIR}/trends_{datetime.now(TIMEZONE_OBJ).strftime('%Y%m%d')}.json"
             with open(trends_file, 'a', encoding='utf-8') as f:
                 json.dump({
                     "timestamp": timestamp.isoformat(),
@@ -344,11 +421,11 @@ def get_trends():
     except tweepy.TweepyException as e:
         error_msg = parse_api_error(e)
         logger.error(f"Erro ao buscar tendências: {error_msg}")
-        return [{"name": f"Erro ao buscar tendências: {error_msg}", "volume": "N/A"}], datetime.now()
+        return [{"name": f"Erro ao buscar tendências: {error_msg}", "volume": "N/A"}], datetime.now(TIMEZONE_OBJ)
             
     except Exception as e:
         logger.error(f"Erro inesperado ao buscar tendências: {e}")
-        return [{"name": "Erro inesperado ao buscar tendências", "volume": "N/A"}], datetime.now()
+        return [{"name": "Erro inesperado ao buscar tendências", "volume": "N/A"}], datetime.now(TIMEZONE_OBJ)
 
 @retry_with_backoff()
 def post_tweet(text):
@@ -366,11 +443,19 @@ def post_tweet(text):
     # Garante que estamos autenticados
     if not ensure_auth():
         return False, "Erro de autenticação. Verifique suas credenciais.", None
-        
+    
     try:
-        # Verifica se o texto está dentro do limite
-        if len(text) > 280:
-            return False, f"Texto excede o limite de 280 caracteres. Atual: {len(text)}", None
+        # Valida e sanitiza o texto do tweet
+        valid, message, sanitized_text = validate_tweet_text(text)
+        
+        if not valid:
+            return False, message, None
+        
+        # Se o texto foi sanitizado e modificado, registra o aviso
+        if sanitized_text != text:
+            logger.warning(f"Texto do tweet sanitizado: {message}")
+            # Usa o texto sanitizado para a postagem
+            text = sanitized_text
         
         # Publica o tweet
         response = client.create_tweet(text=text)
@@ -386,7 +471,7 @@ def post_tweet(text):
         return True, f"Tweet publicado com sucesso. ID: {tweet_id}", {
             "id": tweet_id,
             "text": text,
-            "posted_at": datetime.now().isoformat()
+            "posted_at": datetime.now(TIMEZONE_OBJ).isoformat()
         }
         
     except tweepy.TweepyException as e:
@@ -494,7 +579,7 @@ def health_check():
     health = {
         "authenticated": authenticated,
         "username": auth_status["username"] if authenticated else None,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(TIMEZONE_OBJ).isoformat(),
         "status": "online" if authenticated else "offline"
     }
     

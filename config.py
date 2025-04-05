@@ -22,6 +22,7 @@ import sys
 import json
 from pathlib import Path
 from datetime import datetime
+import pytz  # Importado para suporte de timezone
 
 # ============================================================================
 # Configuração de log
@@ -36,6 +37,7 @@ DEPENDENCIES = {
     'tweepy': 'tweepy',
     'apscheduler': 'APScheduler',
     'colorama': 'colorama',
+    'pytz': 'pytz',  # Adicionado pytz como dependência
 }
 
 # Verificar dependências críticas
@@ -124,6 +126,31 @@ DB_TIMEOUT = 30  # Timeout para operações no banco de dados em segundos
 SCHEDULER_MISFIRE_GRACE_TIME = 60  # Tempo de tolerância para tarefas atrasadas (segundos)
 SCHEDULER_COALESCE = True  # Combinar execuções perdidas
 SCHEDULER_MAX_INSTANCES = 3  # Número máximo de instâncias para um mesmo job
+
+# ============================================================================
+# Configuração de Timezone
+# ============================================================================
+# Obtém o timezone do ambiente ou usa o padrão UTC
+TIMEZONE = os.getenv("TIMEZONE", "UTC")
+
+# Verifica se o timezone fornecido é válido
+try:
+    TIMEZONE_OBJ = pytz.timezone(TIMEZONE)
+    logger.info(f"Usando timezone: {TIMEZONE}")
+except pytz.exceptions.UnknownTimeZoneError:
+    logger.warning(f"Timezone inválido: {TIMEZONE}. Usando UTC como padrão.")
+    TIMEZONE = "UTC"
+    TIMEZONE_OBJ = pytz.UTC
+
+# Define o timezone padrão para a aplicação
+os.environ['TZ'] = TIMEZONE
+if hasattr(time, 'tzset'):
+    # Disponível apenas em sistemas Unix-like
+    try:
+        import time
+        time.tzset()
+    except:
+        pass
 
 # ============================================================================
 # Configurações de Tendências
@@ -224,6 +251,12 @@ def validate_configs():
     # Validação de porta web
     if WEB_PORT < 1024 or WEB_PORT > 65535:
         warnings.append(f"WEB_PORT inválido: {WEB_PORT}. Deve estar entre 1024 e 65535.")
+    
+    # Validação de timezone
+    try:
+        pytz.timezone(TIMEZONE)
+    except pytz.exceptions.UnknownTimeZoneError:
+        warnings.append(f"TIMEZONE inválido: {TIMEZONE}. Usando UTC como padrão.")
     
     return warnings
 

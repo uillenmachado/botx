@@ -31,7 +31,13 @@ import threading
 import time
 from pathlib import Path
 from datetime import datetime
-from flask import Flask, request, jsonify, render_template, send_from_directory
+
+# Importações explícitas de Flask
+try:
+    from flask import Flask, request, jsonify, render_template, send_from_directory
+except ImportError:
+    print("Erro: Flask não está instalado. Execute 'python setup.py' para instalar dependências.")
+    sys.exit(1)
 
 # Determina o diretório base (onde o server.py está localizado)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -46,7 +52,7 @@ logger = logging.getLogger(__name__)
 try:
     from config import (
         WEB_HOST, WEB_PORT, DEBUG_MODE, 
-        TEMPLATES_DIR, STATIC_DIR
+        TEMPLATES_DIR, STATIC_DIR, TIMEZONE_OBJ
     )
 except ImportError as e:
     print(f"Erro ao importar configurações: {e}")
@@ -67,6 +73,12 @@ app.config["PROPAGATE_EXCEPTIONS"] = not DEBUG_MODE  # Em produção, não propa
 
 # Variável global para armazenar referência ao objeto bot quando iniciado via bot.py
 bot_instance = None
+
+# Importações explícitas para os módulos do bot
+# Estas serão usadas apenas quando necessário, através de importação condicional
+# para evitar importações dinâmicas problemáticas
+from bot import DatabaseManager, PostManager
+import twitter_api
 
 # =============================================================================
 # Rotas para servir arquivos estáticos e templates
@@ -157,10 +169,6 @@ def api_create_post():
         
         # Fallback para o modo standalone (sem bot.py)
         try:
-            # Importa as funções necessárias do módulo bot.py
-            sys.path.insert(0, BASE_DIR)
-            from bot import DatabaseManager, PostManager
-            
             # Inicializa conexão local com o banco
             db_manager = DatabaseManager()
             post_manager = PostManager(db_manager)
@@ -172,11 +180,11 @@ def api_create_post():
             db_manager.close()
             
             return jsonify({"success": success, "message": message, "post": post})
-        except ImportError as e:
-            logger.error(f"Erro ao importar módulos do bot: {e}")
+        except Exception as e:
+            logger.error(f"Erro ao criar postagem em modo standalone: {e}")
             return jsonify({
                 "success": False, 
-                "message": "Erro interno do servidor. Verifique os logs para mais detalhes."
+                "message": f"Erro interno do servidor: {str(e)}"
             }), 500
     
     except Exception as e:
@@ -207,10 +215,6 @@ def api_list_posts():
         
         # Fallback para o modo standalone (sem bot.py)
         try:
-            # Importa as funções necessárias do módulo bot.py
-            sys.path.insert(0, BASE_DIR)
-            from bot import DatabaseManager, PostManager
-            
             # Inicializa conexão local com o banco
             db_manager = DatabaseManager()
             post_manager = PostManager(db_manager)
@@ -222,11 +226,11 @@ def api_list_posts():
             db_manager.close()
             
             return jsonify({"success": True, "posts": format_posts_for_display(posts)})
-        except ImportError as e:
-            logger.error(f"Erro ao importar módulos do bot: {e}")
+        except Exception as e:
+            logger.error(f"Erro ao listar postagens em modo standalone: {e}")
             return jsonify({
                 "success": False, 
-                "message": "Erro interno do servidor. Verifique os logs para mais detalhes.",
+                "message": f"Erro interno do servidor: {str(e)}",
                 "posts": []
             }), 500
     
@@ -326,8 +330,6 @@ def api_approve_post():
         
         # Fallback para o modo standalone
         try:
-            from bot import DatabaseManager, PostManager
-            
             db_manager = DatabaseManager()
             post_manager = PostManager(db_manager)
             
@@ -336,11 +338,11 @@ def api_approve_post():
             db_manager.close()
             
             return jsonify({"success": success, "message": message, "post": post})
-        except ImportError as e:
-            logger.error(f"Erro ao importar módulos do bot: {e}")
+        except Exception as e:
+            logger.error(f"Erro ao aprovar/rejeitar postagem em modo standalone: {e}")
             return jsonify({
                 "success": False, 
-                "message": "Erro interno do servidor. Verifique os logs para mais detalhes."
+                "message": f"Erro interno do servidor: {str(e)}"
             }), 500
     
     except Exception as e:
@@ -397,8 +399,6 @@ def api_edit_post():
         
         # Fallback para o modo standalone
         try:
-            from bot import DatabaseManager, PostManager
-            
             db_manager = DatabaseManager()
             post_manager = PostManager(db_manager)
             
@@ -419,11 +419,11 @@ def api_edit_post():
             db_manager.close()
             
             return jsonify({"success": success, "message": message, "post": updated_post})
-        except ImportError as e:
-            logger.error(f"Erro ao importar módulos do bot: {e}")
+        except Exception as e:
+            logger.error(f"Erro ao editar postagem em modo standalone: {e}")
             return jsonify({
                 "success": False, 
-                "message": "Erro interno do servidor. Verifique os logs para mais detalhes."
+                "message": f"Erro interno do servidor: {str(e)}"
             }), 500
     
     except Exception as e:
@@ -468,8 +468,6 @@ def api_delete_post():
         
         # Fallback para o modo standalone
         try:
-            from bot import DatabaseManager, PostManager
-            
             db_manager = DatabaseManager()
             post_manager = PostManager(db_manager)
             
@@ -486,11 +484,11 @@ def api_delete_post():
             db_manager.close()
             
             return jsonify({"success": success, "message": message})
-        except ImportError as e:
-            logger.error(f"Erro ao importar módulos do bot: {e}")
+        except Exception as e:
+            logger.error(f"Erro ao excluir postagem em modo standalone: {e}")
             return jsonify({
                 "success": False, 
-                "message": "Erro interno do servidor. Verifique os logs para mais detalhes."
+                "message": f"Erro interno do servidor: {str(e)}"
             }), 500
     
     except Exception as e:
@@ -512,21 +510,7 @@ def api_schedule_post():
     try:
         data = request.json
         if not data:
-            return jsonify({"success": False, "message": "Dados da requisição inválidos ou ausentes"}), 400
-        
-        post_index = data.get("index", 0)
-        scheduled = data.get("scheduled", True)
-        
-        # Se o bot está disponível, usa a instância
-        if bot_instance and hasattr(bot_instance, "post_manager"):
-            # Determina o status onde buscar o post
-            search_status = "approved" if scheduled else "scheduled"
-            
-            # Busca os posts pelo status apropriado
-            posts = bot_instance.post_manager.get_posts(search_status)
-            
-            if post_index < 0 or post_index >= len(posts):
-                return jsonify({"success": False, "message": f"Índice {post_index} inválido para status '{search_status}'"}), 400
+            return jsonify({"success": False, "message": f"Índice {post_index} inválido para status '{search_status}'"}), 400
             
             post = posts[post_index]
             
@@ -559,8 +543,6 @@ def api_schedule_post():
         
         # Fallback para o modo standalone
         try:
-            from bot import DatabaseManager, PostManager
-            
             db_manager = DatabaseManager()
             post_manager = PostManager(db_manager)
             
@@ -582,7 +564,7 @@ def api_schedule_post():
                 "message": message + " (Nota: bot não está rodando, será agendado quando o bot iniciar)", 
                 "post": updated_post
             })
-        except ImportError as e:
+        except Exception as e:
             logger.error(f"Erro ao importar módulos do bot: {e}")
             return jsonify({
                 "success": False, 
@@ -646,8 +628,6 @@ def api_get_stats():
         
         # Fallback para o modo standalone
         try:
-            from bot import DatabaseManager, PostManager
-            
             db_manager = DatabaseManager()
             post_manager = PostManager(db_manager)
             
@@ -660,11 +640,11 @@ def api_get_stats():
             stats["note"] = "Limitado: servidor rodando sem bot.py. Para funcionalidade completa, inicie com: python bot.py --web"
             
             return jsonify(stats)
-        except ImportError as e:
-            logger.error(f"Erro ao importar módulos do bot: {e}")
+        except Exception as e:
+            logger.error(f"Erro ao obter estatísticas em modo standalone: {e}")
             return jsonify({
                 "success": False, 
-                "message": "Erro interno do servidor. Verifique os logs para mais detalhes.",
+                "message": f"Erro interno do servidor: {str(e)}",
                 "error": str(e)
             }), 500
     
@@ -688,7 +668,7 @@ def api_health():
     health = {
         "server": {
             "status": "online",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(TIMEZONE_OBJ).isoformat(),
             "version": "2.0.0"
         }
     }
@@ -742,11 +722,10 @@ def api_trends():
                 "last_updated": last_updated.isoformat() if last_updated else None
             })
         
-        # Fallback para o modo standalone
+        # Fallback para o modo standalone usando importação explícita
         try:
-            from twitter_api import get_trends
-            
-            trends, timestamp = get_trends()
+            # Usando a importação direta de twitter_api
+            trends, timestamp = twitter_api.get_trends()
             
             if limit and limit < len(trends):
                 trends = trends[:limit]
@@ -756,11 +735,11 @@ def api_trends():
                 "trends": trends,
                 "last_updated": timestamp.isoformat() if timestamp else None
             })
-        except ImportError as e:
-            logger.error(f"Erro ao importar módulo de API do Twitter: {e}")
+        except Exception as e:
+            logger.error(f"Erro ao obter tendências em modo standalone: {e}")
             return jsonify({
                 "success": False,
-                "message": "Módulo de API do Twitter não disponível no modo standalone.",
+                "message": "Erro ao acessar API do Twitter em modo standalone.",
                 "error": str(e)
             }), 500
     
