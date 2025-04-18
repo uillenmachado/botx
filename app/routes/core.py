@@ -48,3 +48,16 @@ def scheduled():
 def history():
     hist=ts.client.get_users_tweets(id=ts.client.get_me().data.id,max_results=20,tweet_fields=["public_metrics"]).data
     return jsonify([{"text":h.text,"metrics":h.public_metrics} for h in hist])
+
+
+@bp.route('/schedule', methods=['POST'])
+def schedule():
+    import re
+    content = bleach.clean(request.form.get('post',''))[:280]
+    time_str = request.form.get('time','')
+    if not re.match(r'^([01]\d|2[0-3]):([0-5]\d)$', time_str):
+        return jsonify(status="error", message="Formato de hora inválido. Use HH:MM")
+    sched = ScheduledPost(content=content, time=time_str)
+    db.session.add(sched); db.session.commit()
+    return jsonify(status="success", message="Agendado")
+
