@@ -1,0 +1,4 @@
+Flask>=3.0
+schedule>=1.2
+python-dotenv>=1.0
+tweepy>=4.14
