@@ -3,4 +3,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.env
+bot.log
+scheduled_posts.json
+post_count.json

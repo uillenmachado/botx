@@ -9,21 +9,28 @@
   <body>
     <div class="container">
       <h1>Bot Sarcástico</h1>
-      <textarea id="context" placeholder="Opcional: sobre o que quer falar? (ex.: gurus, boletos)"></textarea>
+      <textarea id="context" placeholder="Opcional: sobre o que quer falar?"></textarea>
       <button id="generate-btn">Gerar Post</button>
 
       <div id="post-output"></div>
       <div id="char-count"></div>
 
-      <button id="post-btn" style="display: none">Postar Agora</button>
-      <input type="time" id="schedule-time" style="display: none" />
-      <button id="schedule-btn" style="display: none">Agendar</button>
+      <button id="post-btn" class="hidden">Postar Agora</button>
+      <input type="time" id="schedule-time" class="hidden" />
+      <button id="schedule-btn" class="hidden">Agendar</button>
 
       <hr />
       <button id="load-scheduled-btn">Ver Posts Agendados</button>
       <div id="scheduled-posts"></div>
+
+      <hr />
+      <button id="load-history-btn">Histórico de Tweets</button>
+      <div id="tweet-history"></div>
     </div>
 
+    <script>
+      const csrfToken = "{{ csrf_token() }}";
+    </script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
   </body>
 </html>

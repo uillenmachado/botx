@@ -1,74 +1,39 @@
-# Twitter Sarcastic Bot
+# Twitter Sarcastic Bot (v3)
 
-Pequeno bot em Flask + Tweepy que gera tweets sarcásticos em português, publica imediatamente ou agenda para horários específicos.
+Bot em Flask + Tweepy que gera tweets sarcásticos em português — publica ou agenda de forma segura, robusta e responsiva.
 
-## 🚀 Funcionalidades
+## Principais Recursos
+- **Geração de conteúdo**: combina provocações e frases de impacto lidas de arquivos JSON.
+- **Publicação & Agendamento**: Rota web simples; agendamentos persistem em `scheduled_posts.json`.
+- **Rate Limiting**: Limitador deslizando (25 tweets / 24 h) alinhado à API free do Twitter.
+- **Persistência de contagem**: `post_count.json` evita exceder limites após reinício.
+- **Reenvio de posts perdidos**: envia tweets agendados que ficaram dentro da janela de 30 min enquanto offline.
+- **Retry & Backoff**: Tenta novamente em caso de rate‑limit.
+- **Exclusão de agendamentos** e **histórico dos últimos 20 tweets**.
+- **Interface web**: contagem de caracteres, notificações animadas, visualização/remoção de agendados e histórico.
+- **CSRF Protection** via Flask‑WTF.
+- **Logging** com rotação (`bot.log` 1 MB ×5).
+- **Deploy‑ready** (Render, PythonAnywhere).
 
-- **Geração de tweets** no estilo "Lutador Estoico e Sarcástico"
-- **Publicação instantânea** ou **agendamento diário**
-- **Persistência** dos agendamentos em `scheduled_posts.json`
-- **Página web** com contagem de caracteres e listagem de posts agendados
-- **Tratamento de erros** e limite diário de 25 tweets (ajustável)
-- Rota `/scheduled` retorna JSON de posts pendentes
+## Atualização de Conteúdo
+Edite ou adicione frases em `content/provocacoes.json` e `content/frases_impacto.json`.
 
-## 🛡️ Segurança
-
-- Credenciais são carregadas via variáveis de ambiente.
-- Adicione `.env` ao `.gitignore` para evitar leaks.
-- Revogue imediatamente chaves expostas.
-
-Exemplo de `.env`:
-
-```
-API_KEY=...
-API_KEY_SECRET=...
-ACCESS_TOKEN=...
-ACCESS_TOKEN_SECRET=...
-PORT=5000
-```
-
-## 📦 Instalação
-
+## Instalação Rápida
 ```bash
 git clone <repo-url>
 cd twitter_bot
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-## 💻 Uso local
-
-```bash
+echo -e "API_KEY=...\nAPI_KEY_SECRET=...\nACCESS_TOKEN=...\nACCESS_TOKEN_SECRET=..." > .env
 python bot.py
-# Visite http://localhost:5000
+# http://localhost:5000
 ```
 
-## ⏫ Deploy rápido
+## Deploy (Render)
+- Build command: `pip install -r requirements.txt`
+- Start command: `python bot.py`
+- Variáveis de ambiente: mesmas do `.env` + `SECRET_KEY` (opcional).
 
-### Render
+**Importante**: Revogue imediatamente chaves expostas. Adicione `.env`, `bot.log`, `*.json` ao `.gitignore` (já incluso).
 
-1. Crie um novo serviço Web.
-2. Selecione Python, apontando para `bot.py` como *start command* (`python bot.py`).
-3. Adicione variáveis de ambiente na aba **Environment**.
-4. Defina o *Build Command* como `pip install -r requirements.txt`.
-
-### PythonAnywhere (free)
-
-1. Suba os arquivos pelo painel ou Git.
-2. Crie um **Web App** apontando para `flask` (WSGI).
-3. Edite o arquivo WSGI para importar `app` de `bot`.
-4. Adicione variáveis no *Virtualenv* ou no painel **Environment Variables**.
-
-> **Limitação da API grátis**: atualmente permite ~150 tweets por 24 h.  
-> Este projeto impõe limite de 25 por segurança.
-
-## 🎯 Exemplo de fluxo
-
-1. Abra a página e digite um contexto (ou deixe em branco).
-2. Clique em “Gerar Post” → texto é criado e contagem de caracteres aparece.
-3. **Postar Agora** publica imediatamente ou  
-   defina um horário e clique em **Agendar**.
-4. Em “Ver Posts Agendados” veja a lista de tweets pendentes.
-
-Boa diversão! 🎉
+Bom proveito! 🚀
