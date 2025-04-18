@@ -11,10 +11,17 @@
       <h1>Bot Sarcástico</h1>
       <textarea id="context" placeholder="Opcional: sobre o que quer falar? (ex.: gurus, boletos)"></textarea>
       <button id="generate-btn">Gerar Post</button>
+
       <div id="post-output"></div>
+      <div id="char-count"></div>
+
       <button id="post-btn" style="display: none">Postar Agora</button>
       <input type="time" id="schedule-time" style="display: none" />
       <button id="schedule-btn" style="display: none">Agendar</button>
+
+      <hr />
+      <button id="load-scheduled-btn">Ver Posts Agendados</button>
+      <div id="scheduled-posts"></div>
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>

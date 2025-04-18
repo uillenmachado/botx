@@ -11,7 +11,7 @@ body {
 }
 
 .container {
-  max-width: 500px;
+  max-width: 560px;
   width: 100%;
   text-align: center;
 }
@@ -31,6 +31,7 @@ input {
   color: #ffffff;
   font-size: 16px;
   border-radius: 5px;
+  resize: vertical;
 }
 
 button {
@@ -56,4 +57,26 @@ button:hover {
   min-height: 100px;
   text-align: left;
   white-space: pre-wrap;
+}
+
+#char-count {
+  font-size: 12px;
+  text-align: right;
+  margin-top: -10px;
+}
+
+#scheduled-posts {
+  margin-top: 20px;
+  text-align: left;
+}
+
+.scheduled-post {
+  background: #1a1a1a;
+  border-radius: 5px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.scheduled-post small {
+  color: #aaaaaa;
 }
