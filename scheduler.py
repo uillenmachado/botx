@@ -12,6 +12,20 @@ def run_scheduler():
         while True:
             try:
                 processed=ts.process_scheduled_tweets()
+                
+# process failed queue
+from app.models import FailedPostQueue
+q_items=FailedPostQueue.query.limit(10).all()
+for item in q_items:
+    res=ts.post_async(item.content)
+    if res.get("status")=="success":
+        db.session.delete(item)
+    else:
+        item.tries+=1
+        if item.tries>=5:
+            db.session.delete(item)
+    db.session.commit()
+
                 if processed:
                     logging.info("Processed %s scheduled tweets", len(processed))
             except Exception as e:

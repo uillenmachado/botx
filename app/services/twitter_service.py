@@ -42,6 +42,14 @@ class TwitterService:
             return {"status":"success","message":"Tweeted","id":tweet_id}
         except tweepy.TweepyException as e:
             logging.error("Twitter API error: %s",e)
+            
+except tweepy.TooManyRequests as e:
+    logging.warning("Rate limit hit, queueing tweet")
+    from ..models import FailedPostQueue
+    db.session.add(FailedPostQueue(content=text))
+    db.session.commit()
+    return {"status":"error","message":"Queued due to rate limit"}
+
             return {"status":"error","message":f"Error posting tweet: {str(e)}"}
 
     def process_scheduled_tweets(self):
@@ -77,3 +85,23 @@ class TwitterService:
         except Exception as e:
             logging.error("Metric fetch error %s",e)
             return {}
+
+def upload_image(self, file_path:str):
+    """Upload image (PNG/JPG/GIF) via v1.1 media endpoint and return media_id"""
+    import tweepy
+    auth = tweepy.OAuth1UserHandler(
+        os.getenv("API_KEY"), os.getenv("API_KEY_SECRET"),
+        os.getenv("ACCESS_TOKEN"), os.getenv("ACCESS_TOKEN_SECRET")
+    )
+    api = tweepy.API(auth, wait_on_rate_limit=True)
+    try:
+        media = api.media_upload(file_path)
+        return media.media_id_string
+    except tweepy.TweepyException as e:
+        logging.error("Media upload error: %s", e)
+        return None
+
+def post_async(self, text, media_id=None):
+    from tasks import post_tweet_async
+    post_tweet_async.delay(text, media_id)
+    return {"status":"queued","message":"Tweet enfileirado para envio"}

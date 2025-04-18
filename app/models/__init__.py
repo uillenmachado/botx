@@ -26,3 +26,10 @@ class PostHistory(db.Model):
     created_at=db.Column(db.DateTime,default=datetime.utcnow)
     likes=db.Column(db.Integer,default=0)
     retweets=db.Column(db.Integer,default=0)
+
+
+class FailedPostQueue(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
+    tries = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

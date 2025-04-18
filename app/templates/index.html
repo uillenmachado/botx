@@ -1,16 +1,13 @@
 
-<!doctype html><html lang="pt"><head><meta charset="utf-8"><title>Bot</title></head><body>
+{% extends "layout.html" %}
+{% block body %}
 <h1>Twitter Bot</h1>
-<textarea id="context"></textarea><button id="gen">Gerar</button><pre id="post"></pre>
+<textarea id="context"></textarea><button id="gen">Gerar</button>
+<pre id="post" contenteditable="true"></pre>
 <button id="tweet">Tweetar</button>
-<script>
-const csrfToken="";
-document.getElementById('gen').onclick=async()=>{
-let ctx=document.getElementById('context').value;
-let r=await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'context='+encodeURIComponent(ctx)});
-let d=await r.json();document.getElementById('post').textContent=d.post;}
-document.getElementById('tweet').onclick=async()=>{
-let p=document.getElementById('post').textContent;
-let r=await fetch('/post',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'post='+encodeURIComponent(p)});
-alert((await r.json()).message);}
-</script><hr><h3>Métricas</h3><canvas id='chart' width='400' height='200'></canvas><script src='https://cdn.jsdelivr.net/npm/chart.js'></script><script>/* fetch metrics JS placeholder */</script></body></html>
+<hr>
+<h2>Métricas Recentes</h2>
+<canvas id="chart" width="400" height="200"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='main.js') }}"></script>
+{% endblock %}

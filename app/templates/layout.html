@@ -1,0 +1,10 @@
+
+<!DOCTYPE html><html lang="pt"><head>
+<meta charset="utf-8"><title>Bot</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script>
+const csrfToken="{{ csrf_token() }}";
+</script>
+</head><body>
+{% block body %}{% endblock %}
+</body></html>
