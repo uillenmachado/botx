@@ -1,0 +1,14 @@
+
+{% extends "layout.html" %}
+{% block body %}
+<h2>{{ _('Agendados') }}</h2>
+<table>
+<tr><th>ID</th><th>{{ _('Conteúdo') }}</th><th>{{ _('Hora') }}</th><th>{{ _('Ações') }}</th></tr>
+{% for j in jobs %}
+<tr>
+<td>{{ j.id }}</td><td>{{ j.content }}</td><td>{{ j.time }}</td>
+<td><button hx-post="/delete_scheduled" hx-vals='{"index":"{{ loop.index0 }}"}' hx-target="closest tr" hx-swap="outerHTML">{{ _('Excluir') }}</button></td>
+</tr>
+{% endfor %}
+</table>
+{% endblock %}

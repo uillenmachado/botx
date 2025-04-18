@@ -13,4 +13,4 @@ document.getElementById('tweet').onclick=async()=>{
 let p=document.getElementById('post').textContent;
 let r=await fetch('/post',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'post='+encodeURIComponent(p)});
 alert((await r.json()).message);}
-</script></body></html>
+</script><hr><h3>Métricas</h3><canvas id='chart' width='400' height='200'></canvas><script src='https://cdn.jsdelivr.net/npm/chart.js'></script><script>/* fetch metrics JS placeholder */</script></body></html>
