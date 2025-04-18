@@ -1,9 +1,13 @@
-import os
 
+import os
 class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", os.urandom(24).hex())
-    ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
-    DEBUG = ENVIRONMENT == "development"
-    DATABASE = os.getenv("DATABASE_URI", "bot.db")
-    RATE_LIMIT = int(os.getenv("RATE_LIMIT", "25"))
-    RATE_WINDOW = int(os.getenv("RATE_WINDOW", "86400"))  # seconds
+    SECRET_KEY=os.getenv("SECRET_KEY",os.urandom(24).hex())
+    SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URI","sqlite:///bot.db")
+    SQLALCHEMY_TRACK_MODIFICATIONS=False
+    CACHE_TYPE="SimpleCache"
+    CACHE_DEFAULT_TIMEOUT=300
+    LANGUAGES=['pt','en']
+    RATELIMIT=25
+    RATELIMIT_WINDOW=86400
+    ENVIRONMENT=os.getenv("ENVIRONMENT","production")
+    DEBUG=ENVIRONMENT=="development"
