@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="container">
+  <h1>Bot Sarcástico</h1>
+  <textarea id="context" placeholder="Sobre o que quer falar?"></textarea>
+  <button id="generate-btn">Gerar</button>
+
+  <div id="post-output" contenteditable="true"></div>
+  <div id="char-count"></div>
+
+  <button id="post-btn" class="hidden">Postar Agora</button>
+  <input type="time" id="schedule-time" class="hidden">
+  <button id="schedule-btn" class="hidden">Agendar</button>
+
+  <hr>
+  <button id="load-scheduled-btn">Ver Agendados</button>
+  <div id="scheduled-posts"></div>
+
+  <hr>
+  <button id="load-history-btn">Histórico</button>
+  <div id="tweet-history"></div>
+</div>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+{% endblock %}

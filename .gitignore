@@ -1,8 +1,0 @@
-.env
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-bot.log
-scheduled_posts.json
-post_count.json
