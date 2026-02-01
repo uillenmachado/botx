@@ -1,0 +1,19 @@
+[Unit]
+Description=Caco Fakessen Twitter Bot Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/.openclaw/workspace/botx-analysis
+Environment=PATH=/root/.openclaw/workspace/botx-analysis/venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/root/.openclaw/workspace/botx-analysis/venv/bin/python3 caco_daemon.py
+Restart=always
+RestartSec=60
+
+# Logging
+StandardOutput=append:/root/.openclaw/workspace/botx-analysis/logs/caco_daemon.log
+StandardError=append:/root/.openclaw/workspace/botx-analysis/logs/caco_daemon.log
+
+[Install]
+WantedBy=multi-user.target
