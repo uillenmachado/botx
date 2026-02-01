@@ -3,7 +3,8 @@ import logging
 import tweepy
 import datetime
 from .rate_limiter import RateLimiter
-from ..models import PostHistory, ScheduledPost, FailedPostQueue, db
+from ..models import PostHistory, ScheduledPost, FailedPostQueue
+from .. import db
 from flask import current_app
 
 
