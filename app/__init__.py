@@ -45,9 +45,10 @@ def create_app():
     babel = Babel(app, locale_selector=get_locale)
 
     # Register blueprints
-    from .routes import core, auth, api_routes
+    from .routes import core, auth, api_routes, bot_routes
     app.register_blueprint(core.bp)
     app.register_blueprint(auth.bp)
+    app.register_blueprint(bot_routes.bp)
     api_routes.init(api)
 
     # User loader for Flask-Login

@@ -1,113 +1,265 @@
-# BotX - Twitter/X Bot
+# BotX - Máquina de Monetização no X
 
-Bot de automação para Twitter/X com interface web para postar tweets, agendar posts e gerar conteúdo automático.
+Bot de automação para construir perfis no X com máximo potencial de monetização, baseado no algoritmo oficial do X.
 
-## Stack
+## 🎯 Funcionalidades
 
-- **Backend:** Flask 3.0 + SQLAlchemy + Flask-Login + Flask-RESTX
-- **Async:** Celery + Redis
-- **Database:** SQLite (padrão) ou qualquer SQL via URI
-- **Deploy:** Docker + Gunicorn
+### 1. Geração de Conteúdo Otimizado
+- Hooks que prendem atenção
+- CTAs que aumentam engajamento
+- Integração com IA (OpenAI/Anthropic) para conteúdo único
+- Templates por nicho (tech, finanças, humor, news, lifestyle)
 
-## Setup
+### 2. Engajamento Estratégico
+- Encontra posts virais automaticamente
+- Replies inteligentes que adicionam valor
+- Quote tweets de conteúdo trending
+- Threads que maximizam dwell time
 
-### 1. Configurar variáveis de ambiente
+### 3. Strategy Engine
+- Horários otimizados por nicho
+- Mix de conteúdo ideal (posts/replies/threads)
+- Rate limiting para evitar spam detection
+- Delays humanizados
 
-```bash
-cp dotenv_sample .env
-# Edite .env com suas credenciais do Twitter
+### 4. Analytics
+- Tracking de impressões e engagement
+- Progresso para monetização
+- Análise de conteúdo que performa melhor
+- Snapshots diários para tendências
+
+## 🧠 Baseado no Algoritmo do X
+
+O sistema é otimizado para maximizar o score do algoritmo:
+
+```
+Score = Σ (weight × P(action))
 ```
 
-**Variáveis obrigatórias:**
-- `API_KEY` - Twitter API Key
-- `API_KEY_SECRET` - Twitter API Key Secret
-- `ACCESS_TOKEN` - Twitter Access Token
-- `ACCESS_TOKEN_SECRET` - Twitter Access Token Secret
-- `BEARER_TOKEN` - Twitter Bearer Token
-- `SECRET_KEY` - Chave secreta para sessões Flask
+**Ações Positivas:**
+- `P(favorite)` - Likes
+- `P(reply)` - Respostas
+- `P(repost)` - Reposts
+- `P(dwell)` - Tempo na postagem
+- `P(follow_author)` - Novos seguidores
 
-**Variáveis opcionais:**
-- `DATABASE_URI` - URI do banco (default: `sqlite:///bot.db`)
-- `REDIS_URL` - URL do Redis (default: `redis://localhost:6379/0`)
-- `RATELIMIT` - Limite de posts por janela (default: 25)
-- `RATELIMIT_WINDOW` - Janela em segundos (default: 86400 = 24h)
-- `ENVIRONMENT` - `development` ou `production`
+**Ações Negativas (evitar):**
+- `P(not_interested)`
+- `P(block_author)`
+- `P(mute_author)`
+- `P(report)`
 
-### 2. Instalar dependências
+## 📦 Instalação
 
+### 1. Clone o repositório
+```bash
+git clone https://github.com/uillenmachado/botx.git
+cd botx
+```
+
+### 2. Configure o ambiente
+```bash
+cp dotenv_sample .env
+# Edite .env com suas credenciais
+```
+
+### 3. Instale dependências
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Inicializar banco de dados
-
+### 4. Inicialize o banco
 ```bash
 flask db init
 flask db migrate
 flask db upgrade
 ```
 
-### 4. Rodar a aplicação
+## ⚙️ Configuração
 
-**Desenvolvimento:**
-```bash
-python main.py
+### Variáveis de Ambiente
+
+**Twitter API (obrigatório):**
+```env
+API_KEY=sua_api_key
+API_KEY_SECRET=sua_api_secret
+ACCESS_TOKEN=seu_access_token
+ACCESS_TOKEN_SECRET=seu_access_secret
+BEARER_TOKEN=seu_bearer_token
 ```
 
-**Produção (Docker):**
+**Aplicação:**
+```env
+SECRET_KEY=chave_secreta_flask
+ENVIRONMENT=development
+```
+
+**Bot (opcional):**
+```env
+BOT_NICHE=tech          # tech, finance, humor, news, lifestyle
+BOT_INTERVAL=15         # Intervalo em minutos
+OPENAI_API_KEY=sk-...   # Para geração com IA
+ANTHROPIC_API_KEY=...   # Alternativa ao OpenAI
+```
+
+**Infraestrutura:**
+```env
+DATABASE_URI=sqlite:///bot.db
+REDIS_URL=redis://localhost:6379/0
+```
+
+## 🚀 Uso
+
+### Modo Web (API)
+```bash
+# Desenvolvimento
+python main.py
+
+# Produção
+gunicorn -w 3 -b 0.0.0.0:8000 main:app
+```
+
+### Modo Daemon (Automação)
+```bash
+# Rodar continuamente
+python bot_daemon.py --niche tech --interval 15
+
+# Executar um ciclo
+python bot_daemon.py --once
+```
+
+### Docker
 ```bash
 docker build -t botx .
 docker run -p 8000:8000 --env-file .env botx
 ```
 
-### 5. Rodar o scheduler (em outro terminal)
+## 🔌 API Endpoints
 
+### Status & Analytics
+
+| Endpoint | Método | Descrição |
+|----------|--------|-----------|
+| `/bot/status` | GET | Status completo do bot |
+| `/bot/analytics` | GET | Analytics detalhados |
+| `/bot/monetization` | GET | Progresso para monetização |
+| `/bot/schedule` | GET | Schedule do dia |
+
+### Ações
+
+| Endpoint | Método | Descrição |
+|----------|--------|-----------|
+| `/bot/post` | POST | Criar post original |
+| `/bot/reply` | POST | Criar reply estratégico |
+| `/bot/thread` | POST | Criar thread |
+| `/bot/quote` | POST | Criar quote tweet |
+| `/bot/cycle` | POST | Executar ciclo completo |
+
+### Discovery
+
+| Endpoint | Método | Descrição |
+|----------|--------|-----------|
+| `/bot/viral` | GET | Encontrar posts virais |
+| `/bot/generate` | POST | Gerar conteúdo (preview) |
+
+### Exemplos de Uso
+
+**Criar post:**
 ```bash
-python scheduler.py
+curl -X POST http://localhost:8000/bot/post \
+  -H "Content-Type: application/json" \
+  -d '{"topic": "inteligência artificial", "style": "informativo"}'
 ```
 
-### 6. Rodar o Celery worker (opcional, para posts assíncronos)
-
+**Preview de conteúdo:**
 ```bash
-celery -A celery_app.celery worker --loglevel=info
+curl -X POST http://localhost:8000/bot/generate \
+  -H "Content-Type: application/json" \
+  -d '{"type": "post", "topic": "produtividade", "dry_run": true}'
 ```
 
-## Endpoints
+**Encontrar posts virais:**
+```bash
+curl "http://localhost:8000/bot/viral?query=tech&min_likes=100"
+```
 
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| GET | `/` | Interface web |
-| POST | `/generate` | Gerar post automático |
-| POST | `/post` | Postar tweet |
-| POST | `/schedule` | Agendar tweet |
-| GET | `/scheduled` | Listar agendados (JSON) |
-| GET | `/scheduled_view` | Listar agendados (HTML) |
-| GET | `/history` | Histórico de tweets |
-| POST | `/upload` | Upload de imagem |
-| GET | `/docs` | Documentação da API (Swagger) |
+## 📊 Requisitos para Monetização
 
-## Estrutura
+Para ser elegível ao X Premium Revenue Share:
+
+| Requisito | Status |
+|-----------|--------|
+| X Premium | Assinatura ativa |
+| Seguidores | 500+ |
+| Impressões | 5M+ (3 meses) |
+| Idade da conta | 90+ dias |
+
+O bot mostra seu progresso em `/bot/monetization`.
+
+## 🎯 Nichos Suportados
+
+| Nicho | Keywords | Melhor Horário |
+|-------|----------|----------------|
+| tech | IA, programação, startup | 8-9h, 18-21h |
+| finance | investimento, ações, dinheiro | 7-9h, 17-18h |
+| humor | meme, piada, zueira | 12-13h, 19-23h |
+| news | notícia, política | 7-9h, 18-20h |
+| lifestyle | produtividade, hábitos | 6-8h, 19-21h |
+
+## 📁 Estrutura
 
 ```
 botx/
 ├── app/
-│   ├── models/         # SQLAlchemy models
-│   ├── routes/         # Flask blueprints
-│   ├── services/       # Twitter service, rate limiter
-│   ├── static/         # CSS, JS
-│   ├── templates/      # HTML templates
-│   └── config.py       # Configurações
-├── tests/              # Testes unitários
-├── scheduler.py        # Daemon de agendamento
-├── tasks.py            # Tarefas Celery
-├── celery_app.py       # Config do Celery
-└── main.py             # Entry point
+│   ├── models/              # SQLAlchemy models
+│   ├── routes/              # Flask blueprints
+│   │   ├── core.py          # Rotas básicas
+│   │   ├── auth.py          # Autenticação
+│   │   └── bot_routes.py    # API do bot
+│   ├── services/
+│   │   ├── twitter_service.py   # Client Twitter
+│   │   ├── bot_engine.py        # Motor principal
+│   │   ├── engagement/          # Finder de posts virais
+│   │   ├── content/             # Geração de conteúdo
+│   │   ├── strategy/            # Timing e mix
+│   │   └── analytics/           # Métricas
+│   ├── templates/           # HTML
+│   └── static/              # CSS/JS
+├── data/                    # Dados persistentes
+│   └── analytics/           # Snapshots diários
+├── bot_daemon.py            # Daemon de automação
+├── scheduler.py             # Scheduler de posts
+├── main.py                  # Entry point
+└── requirements.txt
 ```
 
-## Rate Limiting
+## ⚠️ Avisos
 
-O rate limiter usa Redis para funcionar corretamente com múltiplos workers. Se Redis não estiver disponível, usa fallback em memória (adequado apenas para desenvolvimento single-process).
+1. **Rate Limits:** O bot respeita os limites da API do X. Não tente burlar.
 
-## Licença
+2. **ToS do X:** Use com responsabilidade. Automação excessiva pode resultar em suspensão.
+
+3. **Conteúdo:** O bot gera conteúdo, mas você é responsável pelo que publica.
+
+4. **Credenciais:** Nunca commite suas credenciais. Use `.env`.
+
+## 📈 Métricas de Sucesso
+
+| Fase | Seguidores | Impressões/mês | Posts/dia |
+|------|------------|----------------|-----------|
+| Início | 0-500 | 0-100K | 3-5 |
+| Crescimento | 500-5K | 100K-1M | 5-10 |
+| Escala | 5K-50K | 1M-5M | 10-15 |
+| Monetização | 50K+ | 5M+ | 15+ |
+
+## 🤝 Contribuindo
+
+1. Fork o repositório
+2. Crie uma branch (`git checkout -b feature/nova-feature`)
+3. Commit suas mudanças (`git commit -m 'Add nova feature'`)
+4. Push para a branch (`git push origin feature/nova-feature`)
+5. Abra um Pull Request
+
+## 📄 Licença
 
 MIT
